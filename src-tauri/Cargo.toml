@@ -1,0 +1,46 @@
+[package]
+name = "tldl"
+default-run = "tldl"
+version = "0.1.0"
+description = "Synthèse locale d'audio/vidéo : transcription + résumé, 100 % hors ligne"
+authors = ["jeanp"]
+edition = "2021"
+
+[lib]
+name = "tldl_lib"
+crate-type = ["lib"]
+
+# Outil autonome : vérifie / injecte le manifest Common-Controls v6
+# (correction du 0xC0000139 sur la cible GNU, voir src/manifest_tool.rs).
+[[bin]]
+name = "tldl-manifest"
+path = "src/manifest_tool.rs"
+
+# E2E (F3) exécuté hors de l'app : ne lie que `tldl_lib::pipeline`
+# (ni Tauri ni `rfd`), contournant le binaire de test qui meurt en
+# 0xC0000139 sur la cible GNU (merge `.rsrc` du linker).
+[[bin]]
+name = "tldl-e2e"
+path = "src/tldl_e2e.rs"
+
+# Moteur LLM (llama.cpp b10884) dans un processus dédié : l'app et ce
+# binaire ne peuvent PAS partager de binaire — le ggml de whisper.cpp et
+# le ggml de llama.cpp exportent les mêmes symboles C `ggml_*`
+# (cf. src/tldl_llm_bin.rs).
+[[bin]]
+name = "tldl-llm"
+path = "src/tldl_llm_bin.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+cc = "1"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# 0.38 : dernière version avec la feature `bundled` (SQLite compilé dans l'app,
+# sans dépendance système).
+rusqlite = { version = "0.38", features = ["bundled"] }
+dirs = "5"

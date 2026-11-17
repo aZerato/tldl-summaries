@@ -1,0 +1,217 @@
+//! Orchestration : sonde → WAV 16 kHz → ASR → LLM → sortie UI.
+//! (docs/architecture.md §5)
+
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::{asr, llm, media};
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Progress {
+    /// "probe" | "convert" | "asr" | "llm" | "done"
+    pub step: String,
+    /// Position (secondes pour convert/asr, tokens pour llm, 0 sinon)
+    pub position: f64,
+    /// Durée/total de la même unité
+    pub total: f64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineOutput {
+    pub transcription: asr::Transcription,
+    pub summary_markdown: String,
+    /// `Some` si le résumé est indisponible (modèle LLM absent — F4).
+    pub summary_error: Option<String>,
+    pub asr_model: String,
+    pub llm_model: String,
+    pub duration_secs: f64,
+}
+
+pub struct PipelineOptions {
+    pub asr_model: String,
+    pub llm_model: String,
+    pub language: String,
+    pub temperature: f32,
+    /// GPU (CUDA) pour l'ASR — sans effet sur une build CPU-only.
+    pub use_gpu: bool,
+}
+
+/// Exécute le pipeline complet. `progress` est appelé à chaque étape.
+pub fn run(
+    input: &str,
+    opts: &PipelineOptions,
+    progress: &mut dyn FnMut(&Progress),
+) -> Result<PipelineOutput, String> {
+    progress(&Progress {
+        step: "probe".into(),
+        position: 0.0,
+        total: 0.0,
+    });
+
+    // 1) Sonde du média (format, durée, pistes).
+    let info = media::probe(input).map_err(|e| format!("sonde média : {e}"))?;
+    if !info.has_audio {
+        return Err("aucune piste audio détectée dans ce fichier".into());
+    }
+
+    // 2) → 4) sous dossier temporaire, nettoyé systématiquement (C1/C4).
+    let work = temp_dir()?;
+    let wav = work.join("audio-16k.wav");
+    let res = run_inner(input, &wav, info, opts, progress);
+    let _ = std::fs::remove_dir_all(&work);
+    res
+}
+
+fn run_inner(
+    input: &str,
+    wav: &std::path::Path,
+    info: media::MediaInfo,
+    opts: &PipelineOptions,
+    progress: &mut dyn FnMut(&Progress),
+) -> Result<PipelineOutput, String> {
+    // 2) Conversion WAV PCM 16 kHz mono (C5 : vidéo → audio dans l'app).
+    progress(&Progress {
+        step: "convert".into(),
+        position: 0.0,
+        total: info.duration_secs,
+    });
+    media::to_wav_16k(std::path::Path::new(input), wav)
+        .map_err(|e| format!("conversion WAV : {e}"))?;
+    progress(&Progress {
+        step: "convert".into(),
+        position: info.duration_secs,
+        total: info.duration_secs,
+    });
+
+    // 3) Transcription (whisper.cpp).
+    let tr = asr::transcribe(
+        wav,
+        &asr::AsrConfig {
+            model: opts.asr_model.clone(),
+            language: opts.language.clone(),
+        },
+        opts.use_gpu,
+        &mut |pos, dur| {
+            progress(&Progress {
+                step: "asr".into(),
+                position: pos,
+                total: dur,
+            });
+        },
+    )
+    .map_err(|e| format!("ASR : {e}"))?;
+
+    // 4) Résumé (llama.cpp, F4) — dégradation gracie si le modèle est absent :
+    //    la transcription reste utilisable (l'app est 100 % locale, chaque
+    //    modèle est indépendant et opt-in).
+    let (summary_markdown, summary_error) =
+        if !crate::models::model_path(crate::models::ModelKind::Llm, &opts.llm_model)
+            .exists()
+        {
+            (
+                String::new(),
+                Some(format!(
+                    "Modèle LLM « {} » introuvable — résumé indisponible. \
+                     Déposez le GGUF dans models/ (F11).",
+                    opts.llm_model
+                )),
+            )
+        } else {
+            let cfg = llm::LlmConfig {
+                model: opts.llm_model.clone(),
+                temperature: opts.temperature,
+                max_tokens: 1024,
+            };
+            // Dégradation gracie : une erreur LLM (chargement, dépassement
+            // de contexte, GGUF corrompu) ne doit pas faire perdre la
+            // transcription — le résumé passe en bannière.
+            let r = llm::summarize(&tr, &cfg, &mut |pos, max| {
+                progress(&Progress {
+                    step: "llm".into(),
+                    position: pos as f64,
+                    total: max as f64,
+                });
+            });
+            match r {
+                Ok(md) => (md, None),
+                Err(e) => (String::new(), Some(e)),
+            }
+        };
+
+    progress(&Progress {
+        step: "done".into(),
+        position: 1.0,
+        total: 1.0,
+    });
+
+    Ok(PipelineOutput {
+        transcription: tr,
+        summary_markdown,
+        summary_error,
+        asr_model: opts.asr_model.clone(),
+        llm_model: opts.llm_model.clone(),
+        duration_secs: info.duration_secs,
+    })
+}
+
+#[cfg(test)]
+mod e2e {
+    use super::*;
+
+    /// E2E F3 : pipeline complet (sonde → WAV → whisper → LLM-gated).
+    ///
+    /// Exige `TLDL_E2E_INPUT` (fichier média) ; sinon ignoré.
+    /// `TLDL_FFMPEG_DIR` pour le FFmpeg embarqué.
+    #[test]
+    fn pipeline_e2e() {
+        let input = std::env::var("TLDL_E2E_INPUT").unwrap_or_default();
+        if input.is_empty() || !std::path::Path::new(&input).exists() {
+            eprintln!("skip : TLDL_E2E_INPUT absent");
+            return;
+        }
+        let mut progress = move |_: &Progress| {};
+        let out = run(
+            &input,
+            &PipelineOptions {
+                asr_model: "small".into(),
+                llm_model: "qwen25-7b-q4".into(),
+                language: "auto".into(),
+                temperature: 0.3,
+                use_gpu: false,
+            },
+            &mut progress,
+        );
+        match out {
+            Ok(o) => {
+                assert!(
+                    o.summary_error.is_some(),
+                    "LLM absent : summary_error attendu (dégradation gracie)"
+                );
+                assert!(
+                    !o.transcription.segments.is_empty(),
+                    "aucun segment produit"
+                );
+                eprintln!(
+                    "OK langue={:?} segments={} texte={:?}",
+                    o.transcription.language,
+                    o.transcription.segments.len(),
+                    o.transcription.text
+                );
+            }
+            Err(e) => panic!("pipeline : {e}"),
+        }
+    }
+}
+
+/// Dossier temporaire de travail (WAV intermédiaire), effacé à la fin.
+fn temp_dir() -> Result<PathBuf, String> {
+    let id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!("tldl-summaries-{id}"));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}

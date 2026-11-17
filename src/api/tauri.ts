@@ -1,0 +1,35 @@
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  AppConfig,
+  HistoryRecord,
+  MediaInfo,
+  ModelInfo,
+  PipelineOutput,
+} from "../types";
+
+// Tauri convertit automatiquement camelCase (JS) ↔ snake_case (Rust).
+export const probeMedia = (path: string) =>
+  invoke<MediaInfo>("probe_media", { path });
+
+export const runPipeline = (
+  input: string,
+  asrModel: string,
+  llmModel: string,
+  language: string,
+) =>
+  invoke<PipelineOutput>("run_pipeline", {
+    input,
+    asrModel,
+    llmModel,
+    language,
+  });
+
+export const listModels = () => invoke<ModelInfo[]>("list_models");
+
+export const listHistory = (limit = 50) =>
+  invoke<HistoryRecord[]>("list_history", { limit });
+
+export const getConfig = () => invoke<AppConfig>("get_config");
+
+export const setConfig = (config: AppConfig) =>
+  invoke<null>("set_config", { config });

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/tauri/conf/2",
+  "version": "0.1.0",
+  "identifier": "app.tldl.summaries",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "TL;DW",
+        "width": 1100,
+        "height": 760,
+        "minWidth": 900,
+        "minHeight": 600,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "resources": [
+      "../assets/ffmpeg/"
+    ],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/32x32.png",
+      "icons/32x32@2x.png",
+      "icons/icon-128x128.png",
+      "icons/icon-128x128@2x.png"
+    ],
+    "targets": ["nsis", "msi", "dmg", "appimage"],
+    "category": "Utility",
+    "shortDescription": "Synthèse locale : transcription + résumé, 100 % hors ligne"
+  }
+}
