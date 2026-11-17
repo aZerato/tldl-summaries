@@ -7,7 +7,9 @@ import type {
   PipelineOutput,
 } from "../types";
 
-// Tauri convertit automatiquement camelCase (JS) ↔ snake_case (Rust).
+// Tauri 2 convertit les arguments des commandes (camelCase JS → snake_case
+// Rust) ; les VALEURS DE RETOUR ne sont pas converties : elles suivent les
+// attributs serde des structs Rust (`rename_all = "camelCase"`, cf. types.ts).
 export const probeMedia = (path: string) =>
   invoke<MediaInfo>("probe_media", { path });
 

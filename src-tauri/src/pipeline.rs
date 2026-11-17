@@ -205,6 +205,54 @@ mod e2e {
     }
 }
 
+#[cfg(test)]
+mod serde_tests {
+    use super::*;
+
+    /// Contrat de fil : les types retournés au frontend s'écrivent en
+    /// `camelCase` (Tauri ne convertit que les arguments des commandes, pas
+    /// les retours). Le frontend lit `summaryMarkdown`, `durationSecs`, … —
+    /// pas les champs snake_case.
+    #[test]
+    fn pipeline_output_keys_are_camel_case() {
+        let out = PipelineOutput {
+            transcription: asr::Transcription {
+                text: "t".into(),
+                segments: vec![asr::Segment {
+                    start: 0.0,
+                    end: 1.0,
+                    text: "x".into(),
+                }],
+                language: "fr".into(),
+            },
+            summary_markdown: "s".into(),
+            summary_error: None,
+            asr_model: "small".into(),
+            llm_model: "qwen25-1.5b-q4".into(),
+            duration_secs: 42.0,
+        };
+        let v = serde_json::to_value(&out).unwrap();
+        assert_eq!(v["summaryMarkdown"], "s");
+        assert_eq!(v["summaryError"], serde_json::Value::Null);
+        assert_eq!(v["asrModel"], "small");
+        assert_eq!(v["llmModel"], "qwen25-1.5b-q4");
+        assert_eq!(v["durationSecs"], 42.0);
+        // Les champs snake_case ne doivent pas apparaître au fil.
+        for k in [
+            "summary_markdown",
+            "summary_error",
+            "asr_model",
+            "llm_model",
+            "duration_secs",
+        ] {
+            assert!(
+                v.get(k).is_none(),
+                "clé snake_case {k} trouvée au fil (le frontend lit du camelCase)"
+            );
+        }
+    }
+}
+
 /// Dossier temporaire de travail (WAV intermédiaire), effacé à la fin.
 fn temp_dir() -> Result<PathBuf, String> {
     let id = SystemTime::now()

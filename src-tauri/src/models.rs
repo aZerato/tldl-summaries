@@ -180,6 +180,20 @@ pub fn catalog() -> Vec<ModelInfo> {
                     .into()),
         },
         ModelInfo {
+            id: "qwen25-1.5b-q4".into(),
+            kind: ModelKind::Llm,
+            name: "Qwen2.5 1.5B Q4_K_M".into(),
+            size_mb: 1000,
+            quant: "Q4_K_M".into(),
+            ram_gb: 2.0,
+            is_default: false,
+            available: false,
+            source: Some(
+                "https://huggingface.co/ggml-org/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
+                    .into(),
+            ),
+        },
+        ModelInfo {
             id: "qwen25-3b-q4".into(),
             kind: ModelKind::Llm,
             name: "Qwen2.5 3B Q4_K_M".into(),

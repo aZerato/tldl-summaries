@@ -24,6 +24,7 @@ Langue : détection auto avec biais FR ; option « forcer FR ».
 
 | Famille | Fichier | RAM/VRAM (est.) | Remarque |
 |---|---|---|---|
+| Qwen2.5 1.5B | ~1 Go | ~2 Go | ultra-léger / tests (résumés simples) |
 | Qwen2.5 3B | ~2,1 Go | ~3,5 Go | profil **Léger**, bon FR |
 | Gemma 3 4B | ~2,7 Go | ~4 Go | excellent rapport/qualité |
 | **Qwen2.5 7B / Llama 3.1 8B** ⭐ | ~4,7 Go | ~6–7 Go | **défaut Équilibré** |
@@ -58,6 +59,7 @@ Hugging Face, une URL par modèle (catalogue : `src-tauri/src/models.rs`) :
 | Modèle (id) | Repo Hugging Face | Fichier |
 |---|---|---|
 | tiny / base / small / medium / large-v3-turbo (ASR) | `ggerganov/whisper.cpp` | `ggml-{id}.bin` (f16) |
+| qwen25-1.5b-q4 | `ggml-org/Qwen2.5-1.5B-Instruct-GGUF` | `Qwen2.5-1.5B-Instruct-Q4_K_M.gguf` |
 | qwen25-3b-q4 | `ggml-org/Qwen2.5-3B-Instruct-GGUF` | `Qwen2.5-3B-Instruct-Q4_K_M.gguf` |
 | gemma3-4b-q4 | `ggml-org/gemma-3-4b-it-GGUF` | `gemma-3-4b-it-Q4_K_M.gguf` |
 | qwen25-7b-q4 ⭐ | `ggml-org/Qwen2.5-7B-Instruct-GGUF` | `Qwen2.5-7B-Instruct-Q4_K_M.gguf` |

@@ -91,8 +91,8 @@ export default function ImportPage({ config, onDone }: Props) {
     try {
       const r = await runPipeline(
         path,
-        config.asr_model,
-        config.llm_model,
+        config.asrModel,
+        config.llmModel,
         config.language,
       );
       onDone(r);
@@ -142,8 +142,8 @@ export default function ImportPage({ config, onDone }: Props) {
           <div className="muted">
             {info
               ? `${info.format} · ${formatDuration(
-                  info.duration_secs,
-                )}${info.has_video ? " · vidéo (convertie en audio)" : ""}`
+                  info.durationSecs,
+                )}${info.hasVideo ? " · vidéo (convertie en audio)" : ""}`
               : "lecture du fichier…"}
           </div>
         </div>
@@ -154,7 +154,7 @@ export default function ImportPage({ config, onDone }: Props) {
       <div className="row">
         <button
           className="btn primary"
-          disabled={!path || busy || info?.has_audio === false}
+          disabled={!path || busy || info?.hasAudio === false}
           onClick={run}
         >
           {busy ? "Synthèse en cours…" : "Lancer la synthèse"}

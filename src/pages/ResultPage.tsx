@@ -9,14 +9,14 @@ interface Props {
 export default function ResultPage({ result }: Props) {
   // Pas de résumé ? On ouvre directement la transcription.
   const [tab, setTab] = useState<"resume" | "transcription">(
-    result.summary_markdown ? "resume" : "transcription"
+    result.summaryMarkdown ? "resume" : "transcription"
   );
   const [copied, setCopied] = useState(false);
 
   async function copy() {
     const text =
       tab === "resume"
-        ? result.summary_markdown
+        ? result.summaryMarkdown
         : result.transcription.text;
     try {
       await navigator.clipboard.writeText(text);
@@ -50,18 +50,18 @@ export default function ResultPage({ result }: Props) {
       </div>
 
       {tab === "resume" ? (
-        result.summary_markdown ? (
-          <pre className="markdown">{result.summary_markdown}</pre>
+        result.summaryMarkdown ? (
+          <pre className="markdown">{result.summaryMarkdown}</pre>
         ) : (
-          <p className="muted">{result.summary_error ?? "Résumé indisponible."}</p>
+          <p className="muted">{result.summaryError ?? "Résumé indisponible."}</p>
         )
       ) : (
         <SegmentList segments={result.transcription.segments} />
       )}
 
       <div className="muted">
-        ASR : {result.asr_model} · LLM : {result.llm_model} ·{" "}
-        {Math.round(result.duration_secs)} s de média
+        ASR : {result.asrModel} · LLM : {result.llmModel} ·{" "}
+        {Math.round(result.durationSecs)} s de média
       </div>
     </div>
   );

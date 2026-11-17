@@ -81,6 +81,13 @@ tldl-summaries/
 └─ docs/                      # ← ces documents
 ```
 
+> **Convention de fil frontend ↔ Rust** : les *valeurs de retour* des
+> commandes suivent les attributs serde des structs (`rename_all =
+> "camelCase"`, cf. `src/types.ts`) — Tauri 2 ne convertit que les
+> *arguments* des commandes (camelCase JS → snake_case Rust), pas les retours.
+> Garde-fou : test `pipeline_output_keys_are_camel_case`
+> (`src-tauri/src/pipeline.rs`).
+
 ## 5. Pipeline
 
 ```
@@ -267,7 +274,7 @@ Le `dossier_ffmpeg` est **optionnel** : `media.rs` s'auto-localise
 (`models/llm-<id>.gguf`).
 
 Vérifié (whisper **small**, `samples/jfk.wav`, LLM = Qwen2.5-1.5B Q4_K_M
-`smoke-test`) : sonde → WAV 16 kHz → transcription (langue auto « en »,
+`qwen25-1.5b-q4`) : sonde → WAV 16 kHz → transcription (langue auto « en »,
 segments + horodatages) → **résumé réel** : `tldl-llm` (processus dédié, §5.2)
 génère le Markdown. Sans GGUF déposé, **dégradation gracie** : transcription
 conservée + bannière « modèle LLM absent » (F4/F11).

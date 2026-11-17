@@ -82,7 +82,7 @@ export default function SettingsPage({ config, onChange }: Props) {
   function dlControl(m: ModelInfo) {
     const active = dl && dl.id === m.id;
     if (active && dl) {
-      const total = dl.total > 0 ? dl.total : m.size_mb * MB;
+      const total = dl.total > 0 ? dl.total : m.sizeMb * MB;
       const pct = Math.min(100, (dl.received / total) * 100);
       return (
         <span className="dl">
@@ -104,7 +104,7 @@ export default function SettingsPage({ config, onChange }: Props) {
         disabled={busy}
         onClick={() => startDownload(m.id)}
       >
-        Télécharger ({m.size_mb} Mo)
+        Télécharger ({m.sizeMb} Mo)
       </button>
     );
   }
@@ -129,21 +129,21 @@ export default function SettingsPage({ config, onChange }: Props) {
         {asr.map((m) => (
           <div
             key={m.id}
-            className={m.id === config.asr_model ? "model-row active" : "model-row"}
+            className={m.id === config.asrModel ? "model-row active" : "model-row"}
           >
             <label className="model-pick">
               <input
                 type="radio"
                 name="asr"
-                checked={m.id === config.asr_model}
-                onChange={() => save({ ...config, asr_model: m.id })}
+                checked={m.id === config.asrModel}
+                onChange={() => save({ ...config, asrModel: m.id })}
               />
               <span className="model-name">{m.name}</span>
               <span className="muted">
-                {m.size_mb} Mo · ~{m.ram_gb} Go RAM
+                {m.sizeMb} Mo · ~{m.ramGb} Go RAM
                 {m.available ? "" : " · à télécharger"}
               </span>
-              {m.is_default && <span className="badge">défaut</span>}
+              {m.isDefault && <span className="badge">défaut</span>}
             </label>
             {!m.available && (
               <span className="dl-cell">{dlControl(m)}</span>
@@ -157,22 +157,22 @@ export default function SettingsPage({ config, onChange }: Props) {
         {llm.map((m) => (
           <div
             key={m.id}
-            className={m.id === config.llm_model ? "model-row active" : "model-row"}
+            className={m.id === config.llmModel ? "model-row active" : "model-row"}
           >
             <label className="model-pick">
               <input
                 type="radio"
                 name="llm"
-                checked={m.id === config.llm_model}
-                onChange={() => save({ ...config, llm_model: m.id })}
+                checked={m.id === config.llmModel}
+                onChange={() => save({ ...config, llmModel: m.id })}
               />
               <span className="model-name">{m.name}</span>
               <span className="muted">
-                {(m.size_mb / 1024).toFixed(1).replace(".", ",")} Go ·
-                ~{m.ram_gb} Go
+                {(m.sizeMb / 1024).toFixed(1).replace(".", ",")} Go ·
+                ~{m.ramGb} Go
                 {m.available ? "" : " · à télécharger"}
               </span>
-              {m.is_default && <span className="badge">défaut</span>}
+              {m.isDefault && <span className="badge">défaut</span>}
             </label>
             {!m.available && (
               <span className="dl-cell">{dlControl(m)}</span>

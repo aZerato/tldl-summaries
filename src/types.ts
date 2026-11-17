@@ -1,10 +1,15 @@
 // Types partagés frontend ↔ noyau Rust (cf. src-tauri).
+//
+// Convention de fil : les types Rust portent `#[serde(rename_all =
+// "camelCase")]` et Tauri 2 ne convertit que les ARGUMENTS des commandes
+// (JS → Rust), jamais les valeurs de retour — qui arrivent donc avec leurs
+// clés serde (camelCase). Les interfaces ci-dessous reflètent le JSON réel.
 
 export interface MediaInfo {
   path: string;
-  duration_secs: number;
-  has_video: boolean;
-  has_audio: boolean;
+  durationSecs: number;
+  hasVideo: boolean;
+  hasAudio: boolean;
   format: string;
 }
 
@@ -22,12 +27,12 @@ export interface Transcription {
 
 export interface PipelineOutput {
   transcription: Transcription;
-  summary_markdown: string;
+  summaryMarkdown: string;
   /** Résumé indisponible (modèle LLM absent) — message explicatif. */
-  summary_error: string | null;
-  asr_model: string;
-  llm_model: string;
-  duration_secs: number;
+  summaryError: string | null;
+  asrModel: string;
+  llmModel: string;
+  durationSecs: number;
 }
 
 export interface Progress {
@@ -40,10 +45,10 @@ export interface ModelInfo {
   id: string;
   kind: "asr" | "llm";
   name: string;
-  size_mb: number;
+  sizeMb: number;
   quant: string;
-  ram_gb: number;
-  is_default: boolean;
+  ramGb: number;
+  isDefault: boolean;
   available: boolean;
 }
 
@@ -59,18 +64,18 @@ export interface HistoryRecord {
   id: number;
   file: string;
   created: string;
-  duration_secs: number;
-  asr_model: string;
-  llm_model: string;
+  durationSecs: number;
+  asrModel: string;
+  llmModel: string;
   transcription: string;
-  summary_markdown: string;
+  summaryMarkdown: string;
 }
 
 export interface AppConfig {
   profile: "leger" | "equilibre" | "puissant";
-  asr_model: string;
-  llm_model: string;
+  asrModel: string;
+  llmModel: string;
   language: string;
   temperature: number;
-  use_gpu: boolean;
+  useGpu: boolean;
 }
