@@ -14,6 +14,12 @@
 //! ou via variables d'environnement :
 //!   TLDL_E2E_INPUT=fichier   TLDL_FFMPEG_DIR=dossier
 //!
+//! Mode F11 (sans HTTP serveur requis) :
+//!   tldl-e2e download <id> <url>
+//! Fais passer le vrai moteur `tldl_lib::models::download` (fichier `.part`
+//! + renommage atomique, progression) sur l'`id` donné ; vérifie que la
+//! taille disque = progression = `Content-Length`, puis nettoie.
+//!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
 use std::env;
@@ -23,6 +29,13 @@ use tldl_lib::pipeline::{self, PipelineOptions};
 
 fn main() {
     let argv: Vec<String> = env::args().skip(1).collect();
+
+    // Mode F11 : valider le moteur de téléchargement sur une URL quelconque
+    // (serveur local HTTP, ou HTTPS réel — le TLS rustls est donc aussi exercé).
+    if argv.first().is_some_and(|a| a.as_str() == "download") {
+        run_download_e2e(&argv[1..]);
+        return;
+    }
 
     // `trim()` : les valeurs d'environnement (ou argv) peuvent apporter des
     // espaces parasites (ex. `set VAR=... && ...` sous cmd) qui cassent le
@@ -114,4 +127,60 @@ fn main() {
         std::process::exit(1);
     }
     println!("E2E OK");
+}
+
+/// E2E du moteur de téléchargement F11 (usage : `tldl-e2e download <id> <url>`).
+///
+/// Le fichier est écrit sous `models/whisper-<id>.bin` (id hors catalogue) et
+/// supprimé à la fin. En cas d'échec HTTP, vérifie qu'aucun `.part` ne reste.
+fn run_download_e2e(rest: &[String]) {
+    let (id, url) = match (rest.first(), rest.get(1)) {
+        (Some(i), Some(u)) => (i.trim().to_string(), u.trim().to_string()),
+        _ => {
+            eprintln!("usage : tldl-e2e download <id> <url>");
+            std::process::exit(2);
+        }
+    };
+
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut last: (u64, u64) = (0, 0);
+    let res = tldl_lib::models::download(
+        tldl_lib::models::ModelKind::Asr,
+        &id,
+        &url,
+        &cancel,
+        &mut |r, t| {
+            last = (r, t);
+        },
+    );
+    let path = tldl_lib::models::model_path(tldl_lib::models::ModelKind::Asr, &id);
+    if let Err(e) = res {
+        // Invariant F11 : un échec ne laisse pas de `.part` derrière.
+        let fname = path.file_name().unwrap().to_string_lossy();
+        let part = path.with_file_name(format!("{fname}.part"));
+        if part.exists() {
+            eprintln!("ÉCHEC E2E download : `.part` résiduel ({part:?})");
+            std::process::exit(1);
+        }
+        eprintln!("E2E download ERR (attendu si 404) : {e}");
+        std::process::exit(1);
+    }
+
+    let size = match std::fs::metadata(&path) {
+        Ok(m) => m.len(),
+        Err(e) => {
+            eprintln!("ÉCHEC E2E download : lecture du fichier ({e})");
+            std::process::exit(1);
+        }
+    };
+    if last.0 != size || last.1 != size {
+        eprintln!(
+            "ÉCHEC E2E download : incohérence taille — disque {size}, reçu {}, total {}",
+            last.0, last.1
+        );
+        let _ = std::fs::remove_file(&path);
+        std::process::exit(1);
+    }
+    let _ = std::fs::remove_file(&path); // nettoyage (l'id n'est pas au catalogue)
+    println!("E2E download OK : {size} octets (progression {}/{} = Content-Length)", last.0, last.1);
 }

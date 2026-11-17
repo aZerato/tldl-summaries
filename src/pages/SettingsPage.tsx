@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { listModels, setConfig } from "../api/tauri";
+import { listen } from "@tauri-apps/api/event";
+import {
+  cancelModelDownload,
+  downloadModel,
+  listModels,
+  setConfig,
+} from "../api/tauri";
 import type { AppConfig, ModelInfo } from "../types";
 
 interface Props {
@@ -7,18 +13,42 @@ interface Props {
   onChange: (c: AppConfig) => void;
 }
 
+interface Dl {
+  id: string;
+  received: number;
+  total: number;
+}
+
+const MB = 1024 * 1024;
+
 export default function SettingsPage({ config, onChange }: Props) {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [saved, setSaved] = useState(false);
+  const [dl, setDl] = useState<Dl | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     listModels()
       .then(setModels)
       .catch(() => setModels([]));
+    let un: (() => void) | undefined;
+    listen("model-download-progress", (e) => {
+      const p = e.payload as { id: string; received: number; total: number };
+      setDl(
+        (d) =>
+          d && d.id === p.id ? { id: p.id, received: p.received, total: p.total } : d,
+      );
+    })
+      .then((u) => (un = u))
+      .catch(() => undefined);
+    return () => {
+      un?.();
+    };
   }, []);
 
   const asr = models.filter((m) => m.kind === "asr");
   const llm = models.filter((m) => m.kind === "llm");
+  const busy = dl !== null;
 
   function save(next: AppConfig) {
     onChange(next);
@@ -26,58 +56,128 @@ export default function SettingsPage({ config, onChange }: Props) {
     setConfig(next).catch(() => undefined);
   }
 
+  function startDownload(id: string) {
+    setDl({ id, received: 0, total: 0 });
+    setError(null);
+    downloadModel(id)
+      .then(() => {
+        setDl(null);
+        listModels()
+          .then(setModels)
+          .catch(() => undefined);
+      })
+      .catch((err) => {
+        setDl(null);
+        setError(String(err));
+      });
+  }
+
+  function doCancel() {
+    if (dl) {
+      cancelModelDownload(dl.id).catch(() => undefined);
+      setDl(null);
+    }
+  }
+
+  function dlControl(m: ModelInfo) {
+    const active = dl && dl.id === m.id;
+    if (active && dl) {
+      const total = dl.total > 0 ? dl.total : m.size_mb * MB;
+      const pct = Math.min(100, (dl.received / total) * 100);
+      return (
+        <span className="dl">
+          <span className="dl-bar">
+            <span style={{ width: `${pct}%` }} />
+          </span>
+          <span className="dl-pct">
+            {(dl.received / MB).toFixed(0)} / {(total / MB).toFixed(0)} Mo
+          </span>
+          <button className="btn" onClick={doCancel}>
+            Annuler
+          </button>
+        </span>
+      );
+    }
+    return (
+      <button
+        className="btn"
+        disabled={busy}
+        onClick={() => startDownload(m.id)}
+      >
+        Télécharger ({m.size_mb} Mo)
+      </button>
+    );
+  }
+
   return (
     <div className="page">
       <h2>Modèles</h2>
       <p className="muted">
-        Les modèles sont stockés localement. Téléchargement : à venir (F11) —
-        en attendant, déposez les fichiers GGUF/.bin à la main dans le dossier
+        Les modèles sont stockés localement, téléchargement opt-in (F11).
+        Hors ligne : déposez les fichiers GGUF/.bin à la main dans le dossier
         <code> models/</code> de l'app.
       </p>
+
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
 
       <section className="card">
         <h3>ASR — transcription (whisper.cpp)</h3>
         {asr.map((m) => (
-          <label
+          <div
             key={m.id}
-            className={m.id === config.asr_model ? "model active" : "model"}
+            className={m.id === config.asr_model ? "model-row active" : "model-row"}
           >
-            <input
-              type="radio"
-              name="asr"
-              checked={m.id === config.asr_model}
-              onChange={() => save({ ...config, asr_model: m.id })}
-            />
-            <span className="model-name">{m.name}</span>
-            <span className="muted">
-              {m.size_mb} Mo · ~{m.ram_gb} Go RAM
-              {m.available ? "" : " · à télécharger"}
-            </span>
-            {m.is_default && <span className="badge">défaut</span>}
-          </label>
+            <label className="model-pick">
+              <input
+                type="radio"
+                name="asr"
+                checked={m.id === config.asr_model}
+                onChange={() => save({ ...config, asr_model: m.id })}
+              />
+              <span className="model-name">{m.name}</span>
+              <span className="muted">
+                {m.size_mb} Mo · ~{m.ram_gb} Go RAM
+                {m.available ? "" : " · à télécharger"}
+              </span>
+              {m.is_default && <span className="badge">défaut</span>}
+            </label>
+            {!m.available && (
+              <span className="dl-cell">{dlControl(m)}</span>
+            )}
+          </div>
         ))}
       </section>
 
       <section className="card">
         <h3>LLM — résumé (llama.cpp)</h3>
         {llm.map((m) => (
-          <label
+          <div
             key={m.id}
-            className={m.id === config.llm_model ? "model active" : "model"}
+            className={m.id === config.llm_model ? "model-row active" : "model-row"}
           >
-            <input
-              type="radio"
-              name="llm"
-              checked={m.id === config.llm_model}
-              onChange={() => save({ ...config, llm_model: m.id })}
-            />
-            <span className="model-name">{m.name}</span>
-            <span className="muted">
-              {(m.size_mb / 1024).toFixed(1).replace(".", ",")} Go ·
-              ~{m.ram_gb} Go{m.available ? "" : " · à télécharger"}
-            </span>
-            {m.is_default && <span className="badge">défaut</span>}
-          </label>
+            <label className="model-pick">
+              <input
+                type="radio"
+                name="llm"
+                checked={m.id === config.llm_model}
+                onChange={() => save({ ...config, llm_model: m.id })}
+              />
+              <span className="model-name">{m.name}</span>
+              <span className="muted">
+                {(m.size_mb / 1024).toFixed(1).replace(".", ",")} Go ·
+                ~{m.ram_gb} Go
+                {m.available ? "" : " · à télécharger"}
+              </span>
+              {m.is_default && <span className="badge">défaut</span>}
+            </label>
+            {!m.available && (
+              <span className="dl-cell">{dlControl(m)}</span>
+            )}
+          </div>
         ))}
       </section>
 

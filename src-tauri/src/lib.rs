@@ -3,7 +3,7 @@ mod commands;
 mod config;
 mod llm;
 mod media;
-mod models;
+pub mod models;
 pub mod pipeline;
 mod storage;
 
@@ -29,6 +29,8 @@ pub fn run() {
             commands::probe_media,
             commands::run_pipeline,
             commands::list_models,
+            commands::download_model,
+            commands::cancel_model_download,
             commands::list_history,
             commands::get_config,
             commands::set_config,

@@ -26,6 +26,12 @@ export const runPipeline = (
 
 export const listModels = () => invoke<ModelInfo[]>("list_models");
 
+export const downloadModel = (id: string) =>
+  invoke<null>("download_model", { id });
+
+export const cancelModelDownload = (id: string) =>
+  invoke<boolean>("cancel_model_download", { id });
+
 export const listHistory = (limit = 50) =>
   invoke<HistoryRecord[]>("list_history", { limit });
 

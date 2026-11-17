@@ -50,3 +50,31 @@ Langue : détection auto avec biais FR ; option « forcer FR ».
 - Estimation affichée **avant** chaque téléchargement (F6)
 - Un seul LLM chargé à la fois (chargement/déchargement géré par l'app — F6)
 - Benchmarks (F12) : les valeurs mesurées remplacent les estimations ici
+
+## 5. Sources de téléchargement (F11)
+
+Hugging Face, une URL par modèle (catalogue : `src-tauri/src/models.rs`) :
+
+| Modèle (id) | Repo Hugging Face | Fichier |
+|---|---|---|
+| tiny / base / small / medium / large-v3-turbo (ASR) | `ggerganov/whisper.cpp` | `ggml-{id}.bin` (f16) |
+| qwen25-3b-q4 | `ggml-org/Qwen2.5-3B-Instruct-GGUF` | `Qwen2.5-3B-Instruct-Q4_K_M.gguf` |
+| gemma3-4b-q4 | `ggml-org/gemma-3-4b-it-GGUF` | `gemma-3-4b-it-Q4_K_M.gguf` |
+| qwen25-7b-q4 ⭐ | `ggml-org/Qwen2.5-7B-Instruct-GGUF` | `Qwen2.5-7B-Instruct-Q4_K_M.gguf` |
+| llama31-8b-q4 ⭐ | `ggml-org/Meta-Llama-3.1-8B-Instruct-GGUF` | `Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf` |
+| gemma3-12b-q4 | `ggml-org/gemma-3-12b-it-GGUF` | `gemma-3-12b-it-Q4_K_M.gguf` |
+
+Règles du catalogue :
+
+- **Noms de fichiers en MAJUSCULES** pour la quant (`-Q4_K_M.gguf`) — le dépôt
+  `Qwen/Qwen2.5-7B-Instruct-GGUF` (officiel) est **shardé** (`…-00001-of-00002.gguf`)
+  → on ne le référence pas ; `ggml-org` fournit le fichier unique.
+- Le repo est résolu insensible à la casse (redirect HF) ; le **fichier** est
+  sensible à la casse — d'où ce tableau comme source de vérité.
+- Écriture : `.part` + **renommage atomique** dans `models/` — jamais un
+  modèle à moitié ; annulable à tout moment, taille connue avant (déjà
+  documenté §4).
+- Les URLs HF ne sont pas joignables depuis la machine de dev (401/timeout) :
+  le **moteur** est validé E2E (`tldl-e2e download <id> <url>` — HTTP local +
+  HTTPS réel) ; le téléchargement HF réel est à valider en réseau normal
+  (F11 ⏳).

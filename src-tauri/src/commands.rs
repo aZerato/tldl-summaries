@@ -82,6 +82,52 @@ pub fn list_models() -> Vec<models::ModelInfo> {
     models::status()
 }
 
+/// Téléchargement d'un modèle (F11, opt-in).
+///
+/// La progression est émise à l'événement `model-download-progress`.
+/// Résout en `Ok` si téléchargé **ou annulé** ; `Err` si échec réseau/lecture.
+#[tauri::command]
+pub async fn download_model(app: AppHandle, id: String) -> Result<(), String> {
+    let model = models::catalog()
+        .into_iter()
+        .find(|m| m.id == id)
+        .ok_or_else(|| "modèle inconnu".to_string())?;
+    let source = model
+        .source
+        .clone()
+        .ok_or_else(|| "ce modèle n'est pas téléchargeable (dépôt manuel : models/)".to_string())?;
+    let kind = model.kind;
+
+    let cancel = models::register_canceller(&id)
+        .map_err(|_| "un téléchargement est déjà en cours pour ce modèle".to_string())?;
+
+    let key = id.clone();
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        models::download(kind, &key, &source, cancel.as_ref(), &mut |r, t| {
+            let _ = app.emit(
+                "model-download-progress",
+                &models::DownloadProgress {
+                    id: key.clone(),
+                    received: r,
+                    total: t,
+                },
+            );
+        })
+    })
+    .await
+    .map_err(|_| "téléchargement interrompu".to_string())?;
+
+    models::deregister_canceller(&id);
+    res
+}
+
+/// Annule un téléchargement de modèle en cours (F11).
+/// Retourne `true` s'il y avait un téléchargement à annuler.
+#[tauri::command]
+pub fn cancel_model_download(id: String) -> bool {
+    models::cancel_download(&id)
+}
+
 /// Historique des traitements (plus récents en premier).
 #[tauri::command]
 pub fn list_history(

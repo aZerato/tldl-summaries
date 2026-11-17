@@ -47,6 +47,14 @@ export interface ModelInfo {
   available: boolean;
 }
 
+/// Progression d'un téléchargement de modèle (F11) — événement
+/// `model-download-progress`.
+export interface DownloadProgress {
+  id: string;
+  received: number;
+  total: number;
+}
+
 export interface HistoryRecord {
   id: number;
   file: string;

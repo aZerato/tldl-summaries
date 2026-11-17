@@ -5,7 +5,8 @@
 vendue, build CMake + shim C ; **validé E2E** : transcription `jfk.wav`),
 LLM **réel** via binaire dédié `tldl-llm` (F4, résumé Markdown généré),
 FFmpeg **auto-localisé** (bundle + repo, sans `TLDL_FFMPEG_DIR`),
-téléchargement de modèles (F11) à brancher.
+téléchargement de modèles (F11) **branché** (Hugging Face ; moteur validé
+E2E HTTP/HTTPS).
 
 Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 idée
 
@@ -57,11 +58,18 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - **Critères** : changement de modèle sans redémarrer l'app ;
   estimation conforme à la mesure (±20 %)
 
-### F11 — Récupération des modèles (opt-in) 📋
+### F11 — Récupération des modèles (opt-in) ⏳
 - LLM : téléchargement GGUF intégré (catalogue de l'app) — ou dépôt manuel
 - ASR : GGUF whisper.cpp (Hugging Face), une seule fois
+- Mécanique : source HF par modèle (models.md §5) ; écriture `.part` +
+  renommage atomique (jamais un modèle à moitié) ; **taille affichée avant**,
+  progression reçu/total, **annulable**, 1 téléchargement à la fois
 - **Hors ligne** : dépôt manuel du fichier dans `models/` (supporté + documenté)
 - **Critères** : après la 1ʳᵉ mise en place, l'app est 100 % utilisable hors ligne
+- **Statut** : code en place (backend `reqwest` blocking + rustls, UI avec
+  barre + Annuler) ; **moteur validé E2E** (`tldl-e2e download` : HTTP local +
+  HTTPS réel) ; le téléchargement HF réel est à valider sur un réseau avec
+  egress Hugging Face (machine de dev sans egress HF)
 
 ## Post-MVP
 

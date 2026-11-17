@@ -225,6 +225,10 @@ Détails d'intégration (F3, ADR-002) :
 - `rusqlite` est épinglé à **0.38** (dernière version avec la feature
   `bundled`) : SQLite est compilé dans l'app, aucune dépendance système
   (portabilité C1/C2).
+- **Seule dépendance réseau** (C4) : `reqwest` **blocking** + **rustls**
+  (TLS pur Rust, provider crypto `aws-lc-rs` — C compilé localement, aucune
+  dépendance système : OK cible GNU) ; utilisée uniquement par F11
+  (téléchargement opt-in). Aucun autre réseau dans l'app.
 
 ### 10.1 Cible Windows : MSVC ou MinGW (GNU)
 
@@ -254,6 +258,7 @@ passe par un **binaire dédié** `tldl-e2e` (`src/tldl_e2e.rs`) : il ne lie que
 ```
 tldl-e2e <fichier_média> [dossier_ffmpeg]     # ou TLDL_E2E_INPUT / TLDL_FFMPEG_DIR
 TLDL_E2E_LLM=<id>                            # modèle LLM (sinon qwen25-7b-q4)
+tldl-e2e download <id> <url>                 # F11 : vrai moteur models::download
 ```
 
 Le `dossier_ffmpeg` est **optionnel** : `media.rs` s'auto-localise
@@ -266,6 +271,13 @@ Vérifié (whisper **small**, `samples/jfk.wav`, LLM = Qwen2.5-1.5B Q4_K_M
 segments + horodatages) → **résumé réel** : `tldl-llm` (processus dédié, §5.2)
 génère le Markdown. Sans GGUF déposé, **dégradation gracie** : transcription
 conservée + bannière « modèle LLM absent » (F4/F11).
+
+Mode `download` (F11) : passe le vrai moteur `models::download` sur une URL
+quelconque (serveur local `HttpListener` 127.0.0.1, ou HTTPS réel) et
+assertionne `taille disque = progression = Content-Length`, sans résidu
+`.part` en cas d'échec. Vérifié : HTTP local 3 MiB (OK), 404 (erreur nette,
+aucun `.part`), **HTTPS réel** (`.crate` crates.io, 83 669 o — TLS rustls +
+provider `aws-lc-rs` sur la cible MinGW, redirection suivie).
 
 > Outil annexe `tldl-manifest` (`src/manifest_tool.rs`) : diagnostic/patch du
 > manifest PE d'un binaire Windows (vérifie le v6, `dump` de l'arborescence
