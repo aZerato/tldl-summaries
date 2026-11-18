@@ -3,10 +3,11 @@ import ImportPage from "./pages/ImportPage";
 import ResultPage from "./pages/ResultPage";
 import SettingsPage from "./pages/SettingsPage";
 import HistoryPage from "./pages/HistoryPage";
+import ContextsPage from "./pages/ContextsPage";
 import { getConfig } from "./api/tauri";
 import type { AppConfig, PipelineOutput } from "./types";
 
-type Page = "import" | "result" | "history" | "settings";
+type Page = "import" | "result" | "history" | "contexts" | "settings";
 
 export default function App() {
   const [page, setPage] = useState<Page>("import");
@@ -44,6 +45,12 @@ export default function App() {
             Historique
           </button>
           <button
+            className={page === "contexts" ? "tab active" : "tab"}
+            onClick={() => setPage("contexts")}
+          >
+            Contextes
+          </button>
+          <button
             className={page === "settings" ? "tab active" : "tab"}
             onClick={() => setPage("settings")}
           >
@@ -60,6 +67,7 @@ export default function App() {
               setResult(r);
               setPage("result");
             }}
+            onGoContexts={() => setPage("contexts")}
           />
         )}
         {page === "result" && result && <ResultPage result={result} />}
@@ -74,6 +82,7 @@ export default function App() {
             }}
           />
         )}
+        {page === "contexts" && <ContextsPage />}
       </main>
     </div>
   );

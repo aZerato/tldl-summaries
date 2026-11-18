@@ -1,6 +1,7 @@
 pub mod asr;
 mod commands;
 mod config;
+pub mod gpu;
 mod llm;
 mod media;
 pub mod models;
@@ -35,6 +36,11 @@ pub fn run() {
             commands::list_history,
             commands::get_history,
             commands::search_history,
+            commands::list_contexts,
+            commands::save_context,
+            commands::delete_context,
+            commands::set_context_favorite,
+            commands::list_devices,
             commands::get_config,
             commands::set_config,
         ])

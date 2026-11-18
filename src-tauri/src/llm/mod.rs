@@ -32,10 +32,17 @@ impl Default for LlmConfig {
     }
 }
 
-/// Prompt « rencontre » — docs/architecture.md §5.1.
-pub fn build_prompt(transcription: &Transcription) -> String {
+/// Prompt « rencontre » — docs/architecture.md §5.1 — avec contexte de
+/// prompt utilisateur (F15) : `context` vide = prompt par défaut.
+pub fn build_prompt(transcription: &Transcription, context: &str) -> String {
     let mut s = String::new();
     s.push_str("Tu es un assistant de synthèse de rencontre.\n");
+    let ctx = context.trim();
+    if !ctx.is_empty() {
+        s.push_str("Contexte d'analyse demandé par l'utilisateur :\n");
+        s.push_str(ctx);
+        s.push_str("\n\n");
+    }
     s.push_str("Voici la transcription horodatée d'une rencontre :\n\n");
     s.push_str(&transcription.text);
     s.push_str("\n\nProduis un résumé en Markdown avec exactement ces sections :\n");
@@ -68,11 +75,15 @@ pub fn llm_bin() -> PathBuf {
 
 /// Produit le résumé Markdown d'une transcription.
 ///
+/// - `context` : contexte de prompt utilisateur (F15), vide = défaut.
+/// - `n_gpu_layers` : offload GPU (F10) ; `-1` = GPU, `0` = CPU.
 /// - `progress` : (tokens produits, max tokens) — relai des lignes
 ///   `tldl-progress` émises par `tldl-llm` sur son stderr.
 pub fn summarize(
     transcription: &Transcription,
     cfg: &LlmConfig,
+    context: &str,
+    n_gpu_layers: i32,
     progress: &mut dyn FnMut(u32, u32),
 ) -> Result<String, String> {
     let model_file = crate::models::model_path(crate::models::ModelKind::Llm, &cfg.model);
@@ -83,7 +94,7 @@ pub fn summarize(
             model_file.display()
         ));
     }
-    let prompt = build_prompt(transcription);
+    let prompt = build_prompt(transcription, context);
 
     // Le prompt peut être long : il passe par un fichier, pas par argv.
     let id = SystemTime::now()
@@ -99,6 +110,7 @@ pub fn summarize(
         .arg(&prompt_file)
         .arg(cfg.max_tokens.to_string())
         .arg(format!("{:.3}", cfg.temperature))
+        .arg(n_gpu_layers.to_string())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

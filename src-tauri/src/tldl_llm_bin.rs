@@ -11,7 +11,8 @@
 //! de toute façon ; cf. docs/architecture.md §5).
 //!
 //! Usage :
-//!   tldl-llm <gguf> <fichier_prompt> [max_tokens] [temperature]
+//!   tldl-llm <gguf> <fichier_prompt> [max_tokens] [temperature] [n_gpu_layers]
+//!   n_gpu_layers : -1 = GPU (toutes les couches), 0 = CPU (défaut) — F10.
 //!
 //! Protocole :
 //!   - stdout : le Markdown généré (et rien d'autre),
@@ -29,6 +30,20 @@
 #[link(name = "tldl_ggml-base", kind = "static")]
 #[link(name = "tldl_ggml-cpu", kind = "static")]
 extern "C" {}
+
+// F10 : archives du backend GPU (ggml de llama.cpp, renommées `tldl_ggml*`
+// par build.rs), présentes seulement si `TLDL_GPU` l'a compilée ; le
+// registre `tldl_ggml` les référence (`GGML_USE_*`), d'où ces modules
+// *après* les liens ci-dessus.
+#[cfg(tldl_gpu_cuda)]
+#[link(name = "tldl_ggml-cuda", kind = "static")]
+mod _ggml_backend_cuda {}
+#[cfg(tldl_gpu_vulkan)]
+#[link(name = "tldl_ggml-vulkan", kind = "static")]
+mod _ggml_backend_vulkan {}
+#[cfg(tldl_gpu_metal)]
+#[link(name = "tldl_ggml-metal", kind = "static")]
+mod _ggml_backend_metal {}
 
 // Runtime C++ : les objets ggml/llama référencent `operator new`,
 // `__gxx_personality_seh0`, … — sur la cible GNU, Rust ne lie pas
@@ -50,15 +65,18 @@ mod engine;
 
 use std::env;
 use std::io::Write;
+use std::os::raw::c_int;
 
 fn main() {
     let argv: Vec<String> = env::args().skip(1).map(|s| s.trim().to_string()).collect();
     let (Some(gguf), Some(prompt_file)) = (argv.first().cloned(), argv.get(1).cloned()) else {
-        eprintln!("usage : tldl-llm <gguf> <fichier_prompt> [max_tokens] [temperature]");
+        eprintln!("usage : tldl-llm <gguf> <fichier_prompt> [max_tokens] [temperature] [n_gpu_layers]");
         std::process::exit(2);
     };
     let max_tokens: u32 = argv.get(2).and_then(|s| s.parse().ok()).unwrap_or(1024);
     let temperature: f32 = argv.get(3).and_then(|s| s.parse().ok()).unwrap_or(0.3);
+    // F10 : offload GPU. -1 = toutes les couches, 0 (défaut) = CPU.
+    let n_gpu_layers: i32 = argv.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
 
     let prompt = match std::fs::read_to_string(&prompt_file) {
         Ok(p) => p,
@@ -68,7 +86,7 @@ fn main() {
         }
     };
 
-    let eng = match engine::Engine::load(&gguf) {
+    let eng = match engine::Engine::load(&gguf, n_gpu_layers as c_int) {
         Ok(e) => e,
         Err(m) => {
             eprintln!("tldl-llm : {m}");

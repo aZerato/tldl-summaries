@@ -25,6 +25,13 @@
 //!   tldl-e2e history
 //! Fais passer `tldl_lib::storage` (save/list/get/search) sur un dossier
 //! temporaire : jamais l'historique réel de l'app.
+//!   tldl-e2e contexts
+//! Fais passer `tldl_lib::storage` (contextes de prompt, F15 :
+//! create/list/get/update/delete) sur un dossier temporaire.
+//!   tldl-e2e devices
+//! Fais passer `tldl_lib::gpu` (F10) : énumère les devices ggml (le CPU est
+//! toujours attendu ; le GPU seulement si la build a activé un backend —
+//! `TLDL_GPU`) et vérifie `resolve` (GPU demandé → bascule CPU si absent).
 //!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
@@ -50,6 +57,16 @@ fn main() {
     // Mode F7 : valider l'historique SQLite (dossier temporaire).
     if argv.first().is_some_and(|a| a.as_str() == "history") {
         run_history_e2e();
+        return;
+    }
+    // Mode F15 : valider les contextes de prompt (dossier temporaire).
+    if argv.first().is_some_and(|a| a.as_str() == "contexts") {
+        run_contexts_e2e();
+        return;
+    }
+    // Mode F10 : détection des devices ggml (CPU + GPU si backend actif).
+    if argv.first().is_some_and(|a| a.as_str() == "devices") {
+        run_devices_e2e();
         return;
     }
 
@@ -100,6 +117,10 @@ fn main() {
         language: "auto".into(),
         temperature: 0.3,
         use_gpu: false,
+        n_gpu_layers: 0,
+        device: "CPU".into(),
+        device_note: None,
+        context_instructions: String::new(),
     };
 
     let mut last_step = String::new();
@@ -250,14 +271,16 @@ fn run_history_e2e() {
     };
 
     let json = r#"{"text":"Bonjour le monde.","segments":[{"start":0.0,"end":2.5,"text":"Bonjour le monde."}],"language":"fr"}"#;
-    let mk = |file: &str, dur: f64, asr: &str, llm: &str, text: &str, sum: &str| {
-        st.save(file, storage::now_epoch(), dur, asr, llm, text, json, sum)
+    let mk = |file: &str, dur: f64, asr: &str, llm: &str, dev: &str, ctx: &str, text: &str, sum: &str| {
+        st.save(file, storage::now_epoch(), dur, asr, llm, dev, ctx, text, json, sum)
     };
     let id1 = match mk(
         "C:\\fake\\audio1.wav",
         125.0,
         "small",
         "gemma3-4b-q4",
+        "CPU",
+        "Contexte par défaut",
         "Bonjour le monde. Texte de test pour la recherche plein texte.",
         "## Résumé\n- point un",
     ) {
@@ -272,6 +295,8 @@ fn run_history_e2e() {
         30.0,
         "medium",
         "qwen25-7b-q4",
+        "NVIDIA GeForce RTX 4060",
+        "Contrôle qualité",
         "Deuxième enregistrement, sans résumé.",
         "",
     ) {
@@ -299,6 +324,16 @@ fn run_history_e2e() {
     }
     if rows[0].transcription_json.as_deref() != Some(json) {
         eprintln!("ÉCHEC E2E history : transcription_json absente");
+        std::process::exit(1);
+    }
+    // F10 : le device est consigné (plus récent en tête).
+    if rows[0].device != "NVIDIA GeForce RTX 4060" || rows[1].device != "CPU" {
+        eprintln!("ÉCHEC E2E history : device inattendu ({}, {})", rows[0].device, rows[1].device);
+        std::process::exit(1);
+    }
+    // F15 : le nom de contexte est consigné (plus récent en tête).
+    if rows[0].context_name != "Contrôle qualité" || rows[1].context_name != "Contexte par défaut" {
+        eprintln!("ÉCHEC E2E history : context_name inattendu ({}, {})", rows[0].context_name, rows[1].context_name);
         std::process::exit(1);
     }
     let c = rows[0].created;
@@ -367,4 +402,152 @@ fn run_history_e2e() {
 
     let _ = std::fs::remove_dir_all(&dir);
     println!("E2E history OK : save/list/get/search (dossier temporaire, jamais l'historique réel)");
+}
+
+/// E2E des contextes de prompt F15 (usage : `tldl-e2e contexts`).
+///
+/// Va-et-retour factice dans un dossier temporaire (jamais la base réelle de
+/// l'app) : create → list (ordre favoris) → get → update → delete, puis
+/// nettoyage.
+fn run_contexts_e2e() {
+    use tldl_lib::storage;
+
+    let dir = std::env::temp_dir().join("tldl-e2e-contexts");
+    let _ = std::fs::remove_dir_all(&dir);
+    let st = match storage::Storage::open(&dir) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E contexts : ouverture ({e})");
+            std::process::exit(1);
+        }
+    };
+
+    let mk = |name: &str, instr: &str| st.create_context(name, instr);
+    let a = match mk("Contrôle qualité", "Résume sous forme de rapport de contrôle.") {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E contexts : create ({e})");
+            std::process::exit(1);
+        }
+    };
+    let b = match mk("Décisions", "Isole décisions et actions à venir.") {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E contexts : create ({e})");
+            std::process::exit(1);
+        }
+    };
+
+    // Ordre : favoris d'abord, puis création (a avant b).
+    st.set_context_favorite(a, true)
+        .unwrap_or_else(|e| {
+            eprintln!("ÉCHEC E2E contexts : favori ({e})");
+            std::process::exit(1);
+        });
+    let rows = match st.list_contexts() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E contexts : list ({e})");
+            std::process::exit(1);
+        }
+    };
+    if rows.len() != 2 || rows[0].id != a || rows[1].id != b {
+        eprintln!("ÉCHEC E2E contexts : list inattendue ({} lignes)", rows.len());
+        std::process::exit(1);
+    }
+    if !rows[0].is_favorite || rows[1].is_favorite {
+        eprintln!("ÉCHEC E2E contexts : drapeaux favoris inattendus");
+        std::process::exit(1);
+    }
+
+    // get : contenu complet.
+    let g = match st.get_context(a) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E contexts : get ({e})");
+            std::process::exit(1);
+        }
+    };
+    if g.name != "Contrôle qualité"
+        || g.instructions != "Résume sous forme de rapport de contrôle."
+    {
+        eprintln!("ÉCHEC E2E contexts : get incohérent ({:?})", g);
+        std::process::exit(1);
+    }
+
+    // update : appliquée, et impossible sur un id inexistant.
+    st.update_context(a, "Contrôle qualité v2", "Instructions réécrites.")
+        .unwrap_or_else(|e| {
+            eprintln!("ÉCHEC E2E contexts : update ({e})");
+            std::process::exit(1);
+        });
+    if st.get_context(a).unwrap().instructions != "Instructions réécrites." {
+        eprintln!("ÉCHEC E2E contexts : update non appliquée");
+        std::process::exit(1);
+    }
+    if st.update_context(9_999_999, "x", "y").is_ok() {
+        eprintln!("ÉCHEC E2E contexts : update(9999999) aurait dû échouer");
+        std::process::exit(1);
+    }
+
+    // delete : une fois, puis erreur.
+    st.delete_context(b)
+        .unwrap_or_else(|e| {
+            eprintln!("ÉCHEC E2E contexts : delete ({e})");
+            std::process::exit(1);
+        });
+    if st.delete_context(b).is_ok() {
+        eprintln!("ÉCHEC E2E contexts : double delete aurait dû échouer");
+        std::process::exit(1);
+    }
+    let rows = match st.list_contexts() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E contexts : list finale ({e})");
+            std::process::exit(1);
+        }
+    };
+    if rows.len() != 1 || rows[0].id != a {
+        eprintln!("ÉCHEC E2E contexts : état final inattendu ({} lignes)", rows.len());
+        std::process::exit(1);
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+    println!("E2E contexts OK : create/list/get/update/delete (dossier temporaire, jamais la base réelle)");
+}
+
+/// E2E de la détection de devices F10 (usage : `tldl-e2e devices`).
+///
+/// Interroge le registre de devices du ggml de whisper.cpp (lié dans
+/// l'app) : attend au moins le device CPU ; le GPU n'apparaît que si la
+/// build a activé un backend GPU (`TLDL_GPU` — cf. build.rs) et que la
+/// machine en possède un.
+fn run_devices_e2e() {
+    let devs = tldl_lib::gpu::list_devices();
+    if devs.is_empty() {
+        eprintln!("ÉCHEC E2E devices : aucun device déclaré par ggml (le CPU est toujours attendu)");
+        std::process::exit(1);
+    }
+    let has_cpu = devs.iter().any(|d| d.kind == "cpu");
+    if !has_cpu {
+        eprintln!("ÉCHEC E2E devices : device CPU absent ({devs:?})");
+        std::process::exit(1);
+    }
+    // `resolve` : GPU demandé → premier GPU/iGPU détecté, sinon bascule CPU.
+    let gpu_req = tldl_lib::gpu::resolve(true);
+    if !gpu_req.use_gpu && !gpu_req.fallback {
+        eprintln!("ÉCHEC E2E devices : resolve(true) incohérent ({gpu_req:?})");
+        std::process::exit(1);
+    }
+    let cpu_req = tldl_lib::gpu::resolve(false);
+    if cpu_req.use_gpu || cpu_req.n_gpu_layers != 0 || cpu_req.fallback {
+        eprintln!("ÉCHEC E2E devices : resolve(false) devrait forcer le CPU ({cpu_req:?})");
+        std::process::exit(1);
+    }
+    println!("devices ggml :");
+    for d in &devs {
+        println!("  {} ({})", d.name, d.kind);
+    }
+    println!("resolve(use_gpu=true) : {} ({}, fallback={})", gpu_req.name, gpu_req.kind, gpu_req.fallback);
+    println!("E2E devices OK");
 }

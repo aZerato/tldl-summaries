@@ -16,7 +16,8 @@ pub struct Config {
     pub language: String,
     /// Température LLM (résumé déterministe par défaut)
     pub temperature: f32,
-    /// GPU (CUDA) pour l'ASR — sans effet sur une build CPU-only.
+    /// Utiliser le GPU s'il en existe un (F10) ; `gpu::resolve` bascule
+    /// CPU (avec note) si la build ou la machine n'en a pas.
     #[serde(default)]
     pub use_gpu: bool,
 }

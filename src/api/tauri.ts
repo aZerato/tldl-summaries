@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
+  DeviceInfo,
   HistoryRecord,
   MediaInfo,
   ModelInfo,
   PipelineOutput,
+  PromptContext,
 } from "../types";
 
 // Tauri 2 convertit les arguments des commandes (camelCase JS → snake_case
@@ -18,12 +20,15 @@ export const runPipeline = (
   asrModel: string,
   llmModel: string,
   language: string,
+  /** Id du contexte de prompt (F15) ; `null` = contexte par défaut. */
+  contextId: number | null,
 ) =>
   invoke<PipelineOutput>("run_pipeline", {
     input,
     asrModel,
     llmModel,
     language,
+    contextId: contextId === null ? null : contextId,
   });
 
 export const listModels = () => invoke<ModelInfo[]>("list_models");
@@ -45,7 +50,30 @@ export const getHistory = (id: number) =>
 export const searchHistory = (query: string) =>
   invoke<HistoryRecord[]>("search_history", { query });
 
+/** Devices de calcul disponibles (F10) — CPU + GPU/iGPU détectés. */
+export const listDevices = () => invoke<DeviceInfo[]>("list_devices");
+
 export const getConfig = () => invoke<AppConfig>("get_config");
 
 export const setConfig = (config: AppConfig) =>
   invoke<null>("set_config", { config });
+
+export const listContexts = () =>
+  invoke<PromptContext[]>("list_contexts");
+
+export const saveContext = (
+  id: number | null,
+  name: string,
+  instructions: string,
+) =>
+  invoke<number>("save_context", {
+    id: id === null ? null : id,
+    name,
+    instructions,
+  });
+
+export const deleteContext = (id: number) =>
+  invoke<null>("delete_context", { id });
+
+export const setContextFavorite = (id: number, favorite: boolean) =>
+  invoke<null>("set_context_favorite", { id, favorite });

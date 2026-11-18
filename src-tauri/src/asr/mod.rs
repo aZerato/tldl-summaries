@@ -89,6 +89,20 @@ mod ffi {
 }
 use ffi::TldlWhisper;
 
+// F10 : archives des backends GPU (whisper.cpp), liées seulement si la
+// build les a compilées (variable `TLDL_GPU` — cf. build.rs). Le registre
+// du `ggml` ci-contre les référence (`GGML_USE_*`) : l'archive doit suivre
+// `ggml`/`ggml-base` dans l'ordre de lien, d'où ces modules *après* `ffi`.
+#[cfg(tldl_gpu_cuda)]
+#[link(name = "ggml-cuda", kind = "static")]
+mod _ggml_backend_cuda {}
+#[cfg(tldl_gpu_vulkan)]
+#[link(name = "ggml-vulkan", kind = "static")]
+mod _ggml_backend_vulkan {}
+#[cfg(tldl_gpu_metal)]
+#[link(name = "ggml-metal", kind = "static")]
+mod _ggml_backend_metal {}
+
 /// Moteur whisper (poignée RAII ; le C++ est libéré au drop).
 struct Engine {
     ptr: *const TldlWhisper,

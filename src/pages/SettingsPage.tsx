@@ -4,10 +4,11 @@ import {
   cancelModelDownload,
   deleteModel,
   downloadModel,
+  listDevices,
   listModels,
   setConfig,
 } from "../api/tauri";
-import type { AppConfig, ModelInfo } from "../types";
+import type { AppConfig, DeviceInfo, ModelInfo } from "../types";
 
 interface Props {
   config: AppConfig;
@@ -24,6 +25,7 @@ const MB = 1024 * 1024;
 
 export default function SettingsPage({ config, onChange }: Props) {
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [saved, setSaved] = useState(false);
   const [dl, setDl] = useState<Dl | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +34,9 @@ export default function SettingsPage({ config, onChange }: Props) {
     listModels()
       .then(setModels)
       .catch(() => setModels([]));
+    listDevices()
+      .then(setDevices)
+      .catch(() => setDevices([]));
     let un: (() => void) | undefined;
     listen("model-download-progress", (e) => {
       const p = e.payload as { id: string; received: number; total: number };
@@ -241,6 +246,31 @@ export default function SettingsPage({ config, onChange }: Props) {
             <option value="puissant">Puissant — 32 Go / GPU</option>
           </select>
         </label>
+      </section>
+
+      <section className="card">
+        <h3>Accélération (F10)</h3>
+        <label className="field">
+          <input
+            type="checkbox"
+            checked={config.useGpu}
+            onChange={(e) => save({ ...config, useGpu: e.target.checked })}
+          />
+          Utiliser le GPU s'il en existe un (sinon bascule automatique sur CPU)
+        </label>
+        <div className="muted">
+          Devices détectés :{" "}
+          {devices.length > 0
+            ? devices.map((d) => `${d.name} (${d.kind})`).join(" · ")
+            : "aucun"}
+        </div>
+        {config.useGpu && !devices.some((d) => d.kind === "gpu" || d.kind === "igpu") && (
+          <div className="error" role="alert">
+            Aucun GPU détecté : chaque pipeline basculera sur le CPU
+            (build CPU-only ou machine sans GPU — C3 « GPU optionnel, CPU
+            viable »).
+          </div>
+        )}
       </section>
       {saved && <p className="muted">Enregistré ✓</p>}
     </div>

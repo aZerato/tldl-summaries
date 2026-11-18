@@ -26,6 +26,10 @@ pub struct PipelineOutput {
     pub summary_error: Option<String>,
     pub asr_model: String,
     pub llm_model: String,
+    /// Device utilisé (F10) : ex. « CPU », « NVIDIA … ».
+    pub device: String,
+    /// Note de bascule (F10) : `Some` si GPU demandé mais absent.
+    pub device_note: Option<String>,
     pub duration_secs: f64,
 }
 
@@ -34,8 +38,16 @@ pub struct PipelineOptions {
     pub llm_model: String,
     pub language: String,
     pub temperature: f32,
-    /// GPU (CUDA) pour l'ASR — sans effet sur une build CPU-only.
+    /// GPU résolu (F10) : `true` si le GPU est réellement utilisé.
     pub use_gpu: bool,
+    /// LLM (F10) : `-1` = GPU (toutes couches), `0` = CPU.
+    pub n_gpu_layers: i32,
+    /// Nom du device résolu (F10) : ex. « CPU », « NVIDIA … ».
+    pub device: String,
+    /// Note de bascule (F10) : `Some` si GPU demandé mais absent.
+    pub device_note: Option<String>,
+    /// Contexte de prompt utilisateur (F15) ; vide = contexte « rencontre ».
+    pub context_instructions: String,
 }
 
 /// Exécute le pipeline complet. `progress` est appelé à chaque étape.
@@ -127,7 +139,7 @@ fn run_inner(
             // Dégradation gracie : une erreur LLM (chargement, dépassement
             // de contexte, GGUF corrompu) ne doit pas faire perdre la
             // transcription — le résumé passe en bannière.
-            let r = llm::summarize(&tr, &cfg, &mut |pos, max| {
+            let r = llm::summarize(&tr, &cfg, &opts.context_instructions, opts.n_gpu_layers, &mut |pos, max| {
                 progress(&Progress {
                     step: "llm".into(),
                     position: pos as f64,
@@ -152,6 +164,8 @@ fn run_inner(
         summary_error,
         asr_model: opts.asr_model.clone(),
         llm_model: opts.llm_model.clone(),
+        device: opts.device.clone(),
+        device_note: opts.device_note.clone(),
         duration_secs: info.duration_secs,
     })
 }
@@ -180,6 +194,10 @@ mod e2e {
                 language: "auto".into(),
                 temperature: 0.3,
                 use_gpu: false,
+                n_gpu_layers: 0,
+                device: "CPU".into(),
+                device_note: None,
+                context_instructions: String::new(),
             },
             &mut progress,
         );
@@ -229,6 +247,8 @@ mod serde_tests {
             summary_error: None,
             asr_model: "small".into(),
             llm_model: "qwen25-1.5b-q4".into(),
+            device: "CPU".into(),
+            device_note: None,
             duration_secs: 42.0,
         };
         let v = serde_json::to_value(&out).unwrap();
@@ -236,6 +256,8 @@ mod serde_tests {
         assert_eq!(v["summaryError"], serde_json::Value::Null);
         assert_eq!(v["asrModel"], "small");
         assert_eq!(v["llmModel"], "qwen25-1.5b-q4");
+        assert_eq!(v["device"], "CPU");
+        assert_eq!(v["deviceNote"], serde_json::Value::Null);
         assert_eq!(v["durationSecs"], 42.0);
         // Les champs snake_case ne doivent pas apparaître au fil.
         for k in [
@@ -243,6 +265,7 @@ mod serde_tests {
             "summary_error",
             "asr_model",
             "llm_model",
+            "device_note",
             "duration_secs",
         ] {
             assert!(

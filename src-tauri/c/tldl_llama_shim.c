@@ -3,7 +3,9 @@
  * Miroir du shim whisper : un moteur opaque (modèle + contexte), un chargement
  * du GGUF, et une génération de texte depuis un prompt UTF-8.
  *
- * CPU-only (C2) : n_gpu_layers = 0, pas de backend CUDA/Metal.
+ * GPU optionnel (C3, F10) : `n_gpu_layers` est passé par l'appelant
+ * (-1 = toutes les couches sur le GPU, 0 = CPU) ; sans effet si la build
+ * n'active aucun backend GPU (cf. build.rs / `TLDL_GPU`).
  */
 
 #include "llama.h"
@@ -23,9 +25,10 @@ typedef int32_t (*TldlLlamaProgress)(int32_t produced, int32_t max, void * user)
 
 static int g_backend_init = 0;
 
-/* Charge un GGUF dans `*out`. Retourne 0, ou -1 avec `err` remplie. */
-int tldl_llama_load(const char * path, int32_t n_ctx, TldlLlama ** out, char * err,
-                    int32_t err_len) {
+/* Charge un GGUF dans `*out`. `n_gpu_layers` : -1 = toutes les couches sur
+ * le GPU, 0 = CPU (F10). Retourne 0, ou -1 avec `err` remplie. */
+int tldl_llama_load(const char * path, int32_t n_ctx, int32_t n_gpu_layers,
+                    TldlLlama ** out, char * err, int32_t err_len) {
     if (err != NULL) {
         err[0] = '\0';
     }
@@ -35,7 +38,7 @@ int tldl_llama_load(const char * path, int32_t n_ctx, TldlLlama ** out, char * e
     }
 
     struct llama_model_params mp = llama_model_default_params();
-    mp.n_gpu_layers = 0; /* CPU-only (C2) */
+    mp.n_gpu_layers = n_gpu_layers; /* F10 : -1 = GPU (tout), 0 = CPU */
     struct llama_model * model = llama_model_load_from_file(path, mp);
     if (model == NULL) {
         if (err != NULL) {

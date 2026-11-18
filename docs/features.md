@@ -98,9 +98,30 @@ Package JSON complet (traçabilité : modèles, versions, date).
 ### F9 — Séparation des intervenants (diarisation) 💡
 Plus lourde (pyannote / 3D-Speaker) ; à évaluer après le MVP.
 
-### F10 — Accélération GPU 📋
+### F10 — Accélération GPU ⏳
 CUDA / Metal / Vulkan (whisper.cpp + LLM), détection auto,
-bascule CPU si absent.
+bascule CPU si absent (C3 « GPU optionnel, CPU viable »).
+- **Build** : la variable `TLDL_GPU` (`cpu` défaut | `cuda` | `metal` |
+  `vulkan`) pilote dans `build.rs` les options CMake `GGML_CUDA` /
+  `GGML_METAL` / `GGML_VULKAN` des **deux** ggml (whisper.cpp et
+  llama.cpp) et les cfg `tldl_gpu_*` qui conditionnent les `#[link]` des
+  archives GPU (app/E2E : `ggml-cuda`… ; `tldl-llm` : `tldl_ggml-cuda`…)
+- **Détection** : `src/gpu.rs` interroge le registre de devices du ggml de
+  whisper.cpp (lié dans l'app) — le device CPU est toujours présent, un
+  GPU/iGPU n'apparaît que si la build a activé le backend et que la
+  machine en possède un
+- **Bascule** : `gpu::resolve(use_gpu)` → premier GPU/iGPU détecté si
+  demandé, sinon CPU + note (`DeviceResolution { name, kind, use_gpu,
+  n_gpu_layers, fallback }`) ; le `n_gpu_layers` (-1 = GPU toutes les
+  couches, 0 = CPU) est transmis au binaire `tldl-llm` (5ᵉ argument,
+  défaut 0)
+- **UI** : section « Accélération » de la page Réglages (toggle GPU +
+  devices détectés + alerte si GPU demandé mais absent) ; le device utilisé
+  est affiché sur le résultat et consigné dans l'historique (colonne
+  `records.device`, migration idempotente)
+- **Statut** : code en place (build.rs + `gpu.rs` + `n_gpu_layers` LLM +
+  UI + E2E `tldl-e2e devices` : CPU détecté, `resolve(true)` bascule CPU —
+  attendu sur build CPU) ; à valider dans l'app
 
 ### F12 — Benchmark & cibles perf 📋
 Matrice modèle × device × durée (5 / 10 / 30 min) ; les résultats mesurés
@@ -112,8 +133,29 @@ Player synchronisé aux segments (clic = saut, reprise du segment).
 ### F14 - Travail par section 🔎
 Proposer de travailler soit sur le fichier complet ou sur des sections.
 
-### F15 - Pouvoir proposer des contextes de prompt
-Lorsque l'utilisateur va demander une transcription, il va pouvoir choisir ou creer un contexte d'analyse / résumé. Il peut créer des favoris afin de les réutiliser rapidement. Une page est dédiée pour la créer et gérer les contextes de prompt.
+### F15 - Contextes de prompt ⏳
+L'utilisateur choisit ou crée un contexte d'analyse / résumé avant de
+demander une transcription ; favoris pour la réutilisation rapide ; page
+dédicée à la création / gestion.
+- **Choix à l'import** : sélecteur « Contexte d'analyse / résumé »
+  (valeur par défaut = prompt « rencontre » de l'architecture §5.1) +
+  création rapide (nom + instructions) sans quitter la page
+- **Page « Contextes »** : création, modification, suppression (confirmée),
+  favoris ★ épinglés en tête de liste
+- **Injection** : le contexte est inséré dans le prompt LLM (section «
+  Contexte d'analyse demandé par l'utilisateur ») — le binaire `tldl-llm`
+  n'est pas modifié (il lit le prompt complet depuis son fichier)
+- **Traçabilité** : le nom du contexte est consigné dans l'historique
+  (colonne `records.context_name`), affiché sur la ligne d'historique
+- **Stockage** : table SQLite `contexts` (même base que l'historique — F7)
+- **Statut** : code en place (storage + prompt + UI + E2E `tldl-e2e
+  contexts`) ; à valider dans l'app
 
 ### F16 - Eviter la transcription d'un fichier
 Si un fichier à déjà été analysé il faudrait que l'utilisateur soit averti. Veut-il forcer une nouvelle analyse ? Si oui, alors il continue, sinon il est redirigé vers la transcription correspondante. Il peut toutefois, créer plusieurs transcription / résumés selon les contextes de prompt.
+
+### F17 - Permettre d'avoir un mode avancée pour connecter des modèles via URL/IP
+Permettre à l'utilisateur de pointer sur un provider local ou web IA (mais à ses risques).
+
+### F18 - Permettre à l'utilisateur de mettre une url pour télécharger un modèle autre que ceux conseillés
+Dans le mode avancé également.

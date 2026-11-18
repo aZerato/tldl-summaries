@@ -150,6 +150,30 @@ body {
   color: #fff;
 }
 
+/* Bouton texte (sans chrome) — ex. liens de navigation secondaires. */
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.link:hover {
+  color: var(--text);
+}
+
+.btn.fav {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 0 4px;
+  font-size: 15px;
+  line-height: 1;
+}
+
 .file-card {
   margin-top: 16px;
   background: var(--bg-card);
@@ -385,6 +409,26 @@ select {
 .history-file {
   font-weight: 600;
   word-break: break-all;
+}
+
+/* F15 : formulaire de création/édition des contextes de prompt. */
+.context-form {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 16px;
+}
+
+textarea {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
 }
 
 .history-excerpt {

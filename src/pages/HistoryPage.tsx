@@ -43,6 +43,8 @@ function toOutput(r: HistoryRecord): PipelineOutput {
     summaryError: null,
     asrModel: r.asrModel,
     llmModel: r.llmModel,
+    device: r.device,
+    deviceNote: null,
     durationSecs: r.durationSecs,
   };
 }
@@ -137,6 +139,8 @@ export default function HistoryPage({ onOpen }: Props) {
               <span className="muted">
                 {fmtDate(r.created)} · {fmtDur(r.durationSecs)} · ASR{" "}
                 {r.asrModel} · LLM {r.llmModel}
+                {r.device ? ` · ${r.device}` : ""}
+                {r.contextName ? ` · ${r.contextName}` : ""}
               </span>
               <span className="history-excerpt">
                 {r.transcription.length > 140

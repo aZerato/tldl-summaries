@@ -59,9 +59,15 @@ export default function ResultPage({ result }: Props) {
         <SegmentList segments={result.transcription.segments} />
       )}
 
+      {result.deviceNote && (
+        <div className="error" role="alert">
+          {result.deviceNote}
+        </div>
+      )}
+
       <div className="muted">
-        ASR : {result.asrModel} · LLM : {result.llmModel} ·{" "}
-        {Math.round(result.durationSecs)} s de média
+        ASR : {result.asrModel} · LLM : {result.llmModel} · Device :{" "}
+        {result.device} · {Math.round(result.durationSecs)} s de média
       </div>
     </div>
   );

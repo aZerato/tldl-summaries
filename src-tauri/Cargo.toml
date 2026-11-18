@@ -31,6 +31,16 @@ path = "src/tldl_e2e.rs"
 name = "tldl-llm"
 path = "src/tldl_llm_bin.rs"
 
+[lints.rust]
+# Cfgs émis par build.rs selon la variable TLDL_GPU (F10) : ils pilotent
+# les `#[link]` des archives des backends GPU (src/asr/mod.rs,
+# src/tldl_llm_bin.rs).
+unexpected_cfgs = { level = "warn", check-cfg = [
+    "cfg(tldl_gpu_cuda)",
+    "cfg(tldl_gpu_metal)",
+    "cfg(tldl_gpu_vulkan)",
+] }
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 cc = "1"

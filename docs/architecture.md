@@ -113,6 +113,10 @@ dimensionne au **maximum** des deux, pas à leur somme
 ### 5.1 Prompt LLM (à affiner — cf. F4)
 
 - Rôle : assistant de synthèse de rencontre.
+- **Contexte utilisateur (F15)** : si un contexte de prompt est sélectionné
+  à l'import, il est injecté en tête de prompt (section « Contexte d'analyse
+  demandé par l'utilisateur ») avant la transcription ; sinon prompt par
+  défaut. Le nom du contexte est consigné dans l'historique.
 - Entrée : transcription horodatée (tronquée / fusionnée si > contexte).
 - Sortie Markdown : **Synthèse** (1 paragraphe, 3–5 phrases) / **Points clés**
   (puces) / **Décisions** / **Actions à venir** (qui · quoi · échéance).
@@ -167,6 +171,10 @@ Vérifié (cible GNU, Qwen2.5-1.5B Q4_K_M) : ASR small → transcription, puis
   textes transcription + résumé) — consignation **auto après chaque
   pipeline réussi** (texte + segments horodatés en JSON), recherche plein
   texte, réouverture du résultat (F7)
+- **Contextes de prompt (F15)** : table `contexts` de la même base SQLite
+  (nom, instructions, favori, horodatage) ; le nom du contexte utilisé est
+  consigné dans `records` (`context_name`) ; migration idempotente à
+  l'ouverture (colonne `context_name`)
 - **Zéro télémétrie**, zéro crash report, zéro analytique
 - **Fichiers source non copiés** : l'app ne travaille que sur la piste audio
   extraite ; le média original reste chez l'utilisateur
@@ -222,15 +230,23 @@ Détails d'intégration (F3, ADR-002) :
   via les `#[link]` de chaque binaire — l'app/`tldl-e2e` lient le ggml de
   whisper.cpp seul, `tldl-llm` le ggml de llama.cpp seul (+ `stdc++` +
   `advapi32`). Les deux ggml ne partagent donc jamais un même espace
-  d'adresses.
+  d'adresses. Les archives des backends GPU (`ggml-cuda`…, `tldl_ggml-*`)
+  sont liées par `#[cfg(tldl_gpu_*)]`, émises seulement quand `TLDL_GPU`
+  les a fait compiler (F10).
 - Le shim C remplit `whisper_context_params` / `whisper_full_params` côté C
   (structs internes non stables) et n'expose à Rust qu'une API plate :
   init / transcribe (PCM s16 16 kHz mono) / progression 0..100 / segments
   (texte + t0/t1 en centièmes de seconde) / langue détectée.
 - Audio : `whisper_full()` ne prend que du f32 → conversion s16→f32 dans le
   shim, libérée après l'appel.
-- Build CPU-only par défaut ; le flag `use_gpu` est transmis (sans effet sans
-  CUDA) — l'accélération GPU propre est F10.
+- **GPU optionnel (C3, F10)** : build CPU-only par défaut ; la variable
+  d'environnement `TLDL_GPU` (`cpu` | `cuda` | `metal` | `vulkan`) pilote
+  dans `build.rs` les options CMake `GGML_CUDA` / `GGML_METAL` /
+  `GGML_VULKAN` des **deux** ggml (whisper.cpp + llama.cpp) et les cfg
+  `tldl_gpu_*` des `#[link]` des archives GPU (app/E2E : `ggml-cuda`… ;
+  `tldl-llm` : `tldl_ggml-cuda`…). À l'exécution, `src/gpu.rs` détecte les
+  devices ggml et bascule CPU si le GPU demandé est absent
+  (`gpu::resolve`, note affichée).
 - `rusqlite` est épinglé à **0.38** (dernière version avec la feature
   `bundled`) : SQLite est compilé dans l'app, aucune dépendance système
   (portabilité C1/C2).
@@ -270,6 +286,7 @@ TLDL_E2E_LLM=<id>                            # modèle LLM (sinon qwen25-7b-q4)
 tldl-e2e download <id> <url>                 # F11 : vrai moteur models::download
 tldl-e2e delete <id>                        # F11 : vrai moteur models::delete
 tldl-e2e history                            # F7 : storage save/list/get/search
+tldl-e2e devices                            # F10 : devices ggml + gpu::resolve
 ```
 
 Le `dossier_ffmpeg` est **optionnel** : `media.rs` s'auto-localise

@@ -32,9 +32,59 @@ enum Toolchain {
     Gnu,
 }
 
+/// Gate de build du backend GPU (F10, C3 « GPU optionnel, CPU viable ») :
+/// variable `TLDL_GPU` — `cpu` (défaut) | `cuda` | `metal` | `vulkan`.
+/// `cuda` : toolkit CUDA (nvcc) requis ; `vulkan` : Vulkan SDK (glslc) +
+/// SPIRV-Headers requis ; `metal` : macOS uniquement.
+#[derive(Clone, Copy, PartialEq)]
+enum Gpu {
+    Cpu,
+    Cuda,
+    Metal,
+    Vulkan,
+}
+
+fn gpu_from_env() -> Result<Gpu, String> {
+    let v = env::var("TLDL_GPU").unwrap_or_default().to_lowercase();
+    match v.as_str() {
+        "" | "cpu" => Ok(Gpu::Cpu),
+        "cuda" => Ok(Gpu::Cuda),
+        "vulkan" => Ok(Gpu::Vulkan),
+        "metal" => {
+            // Metal n'existe que sur les hôtes Apple (C2) ; la build est
+            // croisée mais l'hébergement est ici le poste de build.
+            if env::consts::OS != "macos" {
+                return Err(format!(
+                    "TLDL_GPU=metal : Metal est macOS uniquement — \
+                     relancez la build sur un poste macOS (l'host est {:?}).",
+                    env::consts::OS
+                ));
+            }
+            Ok(Gpu::Metal)
+        }
+        other => Err(format!(
+            "TLDL_GPU inattendu : {other:?} (valeurs : cpu, cuda, metal, vulkan)"
+        )),
+    }
+}
+
 fn main() {
     // Contexte Tauri (icônes, capabilities, ...) — à laisser en place.
     tauri_build::build();
+
+    // F10 : gate du backend GPU (variable `TLDL_GPU`, défaut `cpu`).
+    let gpu = gpu_from_env().expect("TLDL_GPU invalide");
+    println!("cargo:rerun-if-env-changed=TLDL_GPU");
+    // Le cfg pilote les `#[link]` des archives des backends GPU (src/asr/
+    // mod.rs, src/tldl_llm_bin.rs). Émis même sans toolchain C++ : le
+    // `cargo check` ne lie pas, et la vraie build l'appliquera si le
+    // toolchain est en place.
+    match gpu {
+        Gpu::Cuda => println!("cargo:rustc-cfg=tldl_gpu_cuda"),
+        Gpu::Metal => println!("cargo:rustc-cfg=tldl_gpu_metal"),
+        Gpu::Vulkan => println!("cargo:rustc-cfg=tldl_gpu_vulkan"),
+        Gpu::Cpu => {}
+    }
 
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -64,7 +114,7 @@ fn main() {
     }
     let toolchain = toolchain.unwrap();
 
-    build_whisper(&src, &build_dir, &toolchain).expect("build CMake de whisper.cpp en échec");
+    build_whisper(&src, &build_dir, &toolchain, gpu).expect("build CMake de whisper.cpp en échec");
 
     // Le shim C (API plate pour Rust) — compilé par `cc`.
     let mut b = cc::Build::new();
@@ -117,7 +167,7 @@ fn main() {
     //    différentes — on les lie sous des noms distincts.
     let llama_build_dir = out.join("llama-build");
     let llama_ggml_libs =
-        build_llama(&llama_src, &llama_build_dir, &toolchain)
+        build_llama(&llama_src, &llama_build_dir, &toolchain, gpu)
             .expect("build CMake de llama.cpp en échec");
 
     // Rust ne lie pas la stdlib C++ : on la demande sur la cible GNU.
@@ -137,9 +187,15 @@ fn main() {
 
 /// Configure + build de llama.cpp (b10884) en libs statiques, via un wrapper
 /// CMake généré dans `OUT_DIR` (add_subdirectory → `LLAMA_STANDALONE=OFF` :
-/// pas de tools/tests/common/server). Retourne les noms de lien des archives
-/// `ggml*` renommées (`tldl_ggml`, `tldl_ggml-base`, …), prêtes à émettre.
-fn build_llama(src: &Path, build_dir: &Path, tc: &Toolchain) -> Result<Vec<String>, String> {
+/// pas de tools/tests/common/server). `gpu` : gate F10 (option `GGML_*` du
+/// backend GPU sur le ggml de llama.cpp). Retourne les noms de lien des
+/// archives `ggml*` renommées (`tldl_ggml`, `tldl_ggml-base`, …).
+fn build_llama(
+    src: &Path,
+    build_dir: &Path,
+    tc: &Toolchain,
+    gpu: Gpu,
+) -> Result<Vec<String>, String> {
     let cmake = find_cmake()
         .ok_or("CMake introuvable. Installez-le (`winget install Kitware.CMake`).")?;
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -202,6 +258,14 @@ fn build_llama(src: &Path, build_dir: &Path, tc: &Toolchain) -> Result<Vec<Strin
         // comme pour la build whisper.
         cfg("GGML_OPENMP", "OFF"),
     ];
+    match gpu {
+        // F10 : le même gate que la build whisper (le binaire `tldl-llm`
+        // embarque le backend GPU de SON ggml, renommé `tldl_ggml*`).
+        Gpu::Cuda => args.push(cfg("GGML_CUDA", "ON")),
+        Gpu::Metal => args.push(cfg("GGML_METAL", "ON")),
+        Gpu::Vulkan => args.push(cfg("GGML_VULKAN", "ON")),
+        Gpu::Cpu => {}
+    }
     if *tc == Toolchain::Gnu {
         args.push(String::from("-G"));
         args.push(String::from("Ninja"));
@@ -298,8 +362,14 @@ fn rename_ggml_archives(dir: &Path) -> Vec<String> {
     names
 }
 
-/// Configure + build de whisper.cpp en lib statique.
-fn build_whisper(src: &Path, build_dir: &Path, tc: &Toolchain) -> Result<(), String> {
+/// Configure + build de whisper.cpp en lib statique. `gpu` : gate F10
+/// (option `GGML_*` du backend GPU sur le ggml de whisper.cpp).
+fn build_whisper(
+    src: &Path,
+    build_dir: &Path,
+    tc: &Toolchain,
+    gpu: Gpu,
+) -> Result<(), String> {
     let cmake = find_cmake()
         .ok_or("CMake introuvable. Installez-le (`winget install Kitware.CMake`) — requis pour compiler whisper.cpp.")?;
 
@@ -323,6 +393,13 @@ fn build_whisper(src: &Path, build_dir: &Path, tc: &Toolchain) -> Result<(), Str
         // Pas de runtime OpenMP à bundler (le CPU backend a sa propre threadpool).
         cfg("GGML_OPENMP", "OFF"),
     ];
+    // F10 : backend GPU activé au build (jamais par défaut — C3).
+    match gpu {
+        Gpu::Cuda => args.push(cfg("GGML_CUDA", "ON")),
+        Gpu::Metal => args.push(cfg("GGML_METAL", "ON")),
+        Gpu::Vulkan => args.push(cfg("GGML_VULKAN", "ON")),
+        Gpu::Cpu => {}
+    }
     if *tc == Toolchain::Gnu {
         // `ninja` est fourni par WinLibs ; CMake le trouve sur le PATH
         // (préfixé ci-dessous par `run_cmake`).
@@ -499,8 +576,14 @@ fn walk_collect(dir: &Path, out: &mut Vec<(String, std::path::PathBuf)>) {
             walk_collect(&p, out);
         } else if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
             let canon = stem.strip_prefix("lib").unwrap_or(stem);
-            if matches!(canon, "whisper" | "ggml" | "ggml-base" | "ggml-cpu")
-                && p.extension().is_some_and(|e| e == "a" || e == "lib")
+            // F10 : les stems GPU ne sont trouvés que si `TLDL_GPU` a fait
+            // compiler l'archive correspondante (sinon absente du build).
+            if matches!(
+                canon,
+                "whisper" | "ggml" | "ggml-base" | "ggml-cpu"
+                    | "ggml-cuda" | "ggml-metal" | "ggml-vulkan"
+            )
+            && p.extension().is_some_and(|e| e == "a" || e == "lib")
             {
                 out.push((canon.to_string(), p));
             }

@@ -6,7 +6,9 @@
 //! dans l'app — le ggml de whisper.cpp et le ggml de llama.cpp ne
 //! peuvent pas partager un même processus (cf. `tldl_llm_bin.rs`).
 //!
-//! CPU-only (C2) : `n_gpu_layers = 0`, OpenMP désactivé.
+//! GPU optionnel (C3, F10) : `n_gpu_layers` (-1 = GPU, 0 = CPU) est passé au
+//! chargement ; sans effet si la build n'active aucun backend GPU. OpenMP
+//! désactivé.
 
 use std::os::raw::{c_char, c_int, c_void};
 
@@ -23,8 +25,9 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// Charge un GGUF. `model_path` : chemin du fichier `.gguf`.
-    pub fn load(model_path: &str) -> Result<Self, String> {
+    /// Charge un GGUF. `model_path` : chemin du fichier `.gguf` ;
+    /// `n_gpu_layers` : `-1` = GPU (toutes les couches), `0` = CPU (F10).
+    pub fn load(model_path: &str, n_gpu_layers: c_int) -> Result<Self, String> {
         unsafe {
             let cpath = std::ffi::CString::new(model_path).map_err(|e| e.to_string())?;
             let mut e: *mut ffi::TldlLlama = std::ptr::null_mut();
@@ -32,6 +35,7 @@ impl Engine {
             let rc = ffi::tldl_llama_load(
                 cpath.as_ptr(),
                 N_CTX,
+                n_gpu_layers,
                 &mut e,
                 err.as_mut_ptr() as *mut c_char,
                 err.len() as c_int,
@@ -120,6 +124,7 @@ mod ffi {
         pub fn tldl_llama_load(
             path: *const c_char,
             n_ctx: c_int,
+            n_gpu_layers: c_int,
             out: *mut *mut TldlLlama,
             err: *mut c_char,
             err_len: c_int,

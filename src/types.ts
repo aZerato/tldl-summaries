@@ -32,7 +32,18 @@ export interface PipelineOutput {
   summaryError: string | null;
   asrModel: string;
   llmModel: string;
+  /** Device utilisé (F10) : ex. « CPU », « NVIDIA … ». */
+  device: string;
+  /** Note de bascule (F10) : GPU demandé mais non détecté (exécution CPU). */
+  deviceNote: string | null;
   durationSecs: number;
+}
+
+/** Device de calcul ggml (F10). */
+export interface DeviceInfo {
+  name: string;
+  /** "cpu" | "gpu" | "igpu" | "accel". */
+  kind: string;
 }
 
 export interface Progress {
@@ -68,11 +79,25 @@ export interface HistoryRecord {
   durationSecs: number;
   asrModel: string;
   llmModel: string;
+  /** Device de calcul utilisé (F10) ; vide avant la migration. */
+  device: string;
+  /** Nom du contexte de prompt (F15) ; vide avant la migration. */
+  contextName: string;
   transcription: string;
   /** JSON complet du `Transcription` (texte + segments + langue) ;
    *  `null` sur les lignes écrites avant la migration. */
   transcriptionJson: string | null;
   summaryMarkdown: string;
+}
+
+/** Contexte de prompt (F15) — instructions d'analyse/résumé réutilisables. */
+export interface PromptContext {
+  id: number;
+  name: string;
+  instructions: string;
+  isFavorite: boolean;
+  /** Horodatage Unix (secondes) — à formater côté UI. */
+  created: number;
 }
 
 export interface AppConfig {
