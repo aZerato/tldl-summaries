@@ -106,9 +106,10 @@ pub fn model_path(kind: ModelKind, id: &str) -> PathBuf {
 /// Catalogue statique — voir docs/models.md (les valeurs mesurées
 /// remplacent les estimations au fil des benchmarks, F12).
 ///
-/// Sources : ASR = `ggerganov/whisper.cpp` (f16), LLM = `ggml-org/*`
-/// (Q4_K_M). Le dépôt manuel dans `models/` reste le chemin hors ligne
-/// (F11) : l'URL n'est que la commodité opt-in.
+/// Sources : ASR = `ggerganov/whisper.cpp` (f16) ; LLM = `ggml-org`
+/// (Gemma) + `bartowski` (Qwen / Llama), tous en Q4_K_M. Le dépôt manuel
+/// dans `models/` reste le chemin hors ligne (F11) : l'URL n'est que la
+/// commodité opt-in.
 pub fn catalog() -> Vec<ModelInfo> {
     vec![
         ModelInfo {
@@ -189,7 +190,7 @@ pub fn catalog() -> Vec<ModelInfo> {
             is_default: false,
             available: false,
             source: Some(
-                "https://huggingface.co/ggml-org/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
+                "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
                     .into(),
             ),
         },
@@ -203,7 +204,7 @@ pub fn catalog() -> Vec<ModelInfo> {
             is_default: false,
             available: false,
             source: Some(
-                "https://huggingface.co/ggml-org/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+                "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
                     .into(),
             ),
         },
@@ -231,7 +232,7 @@ pub fn catalog() -> Vec<ModelInfo> {
             is_default: true,
             available: false,
             source: Some(
-                "https://huggingface.co/ggml-org/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+                "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
                     .into(),
             ),
         },
@@ -245,7 +246,7 @@ pub fn catalog() -> Vec<ModelInfo> {
             is_default: false,
             available: false,
             source: Some(
-                "https://huggingface.co/ggml-org/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+                "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
                     .into(),
             ),
         },

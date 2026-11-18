@@ -59,24 +59,29 @@ Hugging Face, une URL par modèle (catalogue : `src-tauri/src/models.rs`) :
 | Modèle (id) | Repo Hugging Face | Fichier |
 |---|---|---|
 | tiny / base / small / medium / large-v3-turbo (ASR) | `ggerganov/whisper.cpp` | `ggml-{id}.bin` (f16) |
-| qwen25-1.5b-q4 | `ggml-org/Qwen2.5-1.5B-Instruct-GGUF` | `Qwen2.5-1.5B-Instruct-Q4_K_M.gguf` |
-| qwen25-3b-q4 | `ggml-org/Qwen2.5-3B-Instruct-GGUF` | `Qwen2.5-3B-Instruct-Q4_K_M.gguf` |
+| qwen25-1.5b-q4 | `bartowski/Qwen2.5-1.5B-Instruct-GGUF` | `Qwen2.5-1.5B-Instruct-Q4_K_M.gguf` |
+| qwen25-3b-q4 | `bartowski/Qwen2.5-3B-Instruct-GGUF` | `Qwen2.5-3B-Instruct-Q4_K_M.gguf` |
 | gemma3-4b-q4 | `ggml-org/gemma-3-4b-it-GGUF` | `gemma-3-4b-it-Q4_K_M.gguf` |
-| qwen25-7b-q4 ⭐ | `ggml-org/Qwen2.5-7B-Instruct-GGUF` | `Qwen2.5-7B-Instruct-Q4_K_M.gguf` |
-| llama31-8b-q4 ⭐ | `ggml-org/Meta-Llama-3.1-8B-Instruct-GGUF` | `Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf` |
+| qwen25-7b-q4 ⭐ | `bartowski/Qwen2.5-7B-Instruct-GGUF` | `Qwen2.5-7B-Instruct-Q4_K_M.gguf` |
+| llama31-8b-q4 ⭐ | `bartowski/Meta-Llama-3.1-8B-Instruct-GGUF` | `Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf` |
 | gemma3-12b-q4 | `ggml-org/gemma-3-12b-it-GGUF` | `gemma-3-12b-it-Q4_K_M.gguf` |
 
 Règles du catalogue :
 
 - **Noms de fichiers en MAJUSCULES** pour la quant (`-Q4_K_M.gguf`) — le dépôt
   `Qwen/Qwen2.5-7B-Instruct-GGUF` (officiel) est **shardé** (`…-00001-of-00002.gguf`)
-  → on ne le référence pas ; `ggml-org` fournit le fichier unique.
+  → on ne le référence pas ; `bartowski` / `ggml-org` fournissent le fichier
+  unique.
+- Les repos `ggml-org/Qwen2.5-*-GGUF` et `ggml-org/Meta-Llama-3.1-8B-Instruct-GGUF`
+  **n'existent pas** (HF renvoie 401 pour un repo absent) → Qwen/Llama sont
+  servis par `bartowski/*` ; seules les Gemma sont chez `ggml-org`.
 - Le repo est résolu insensible à la casse (redirect HF) ; le **fichier** est
-  sensible à la casse — d'où ce tableau comme source de vérité.
+  sensible à la casse — d'où ce tableau comme source de vérité. Chaque URL est
+  vérifiée via l'API HF (`/api/models/{repo}/tree/main`) avant mise en
+  catalogue.
 - Écriture : `.part` + **renommage atomique** dans `models/` — jamais un
   modèle à moitié ; annulable à tout moment, taille connue avant (déjà
   documenté §4).
-- Les URLs HF ne sont pas joignables depuis la machine de dev (401/timeout) :
-  le **moteur** est validé E2E (`tldl-e2e download <id> <url>` — HTTP local +
-  HTTPS réel) ; le téléchargement HF réel est à valider en réseau normal
-  (F11 ⏳).
+- Moteur validé E2E (`tldl-e2e download <id> <url>` — HTTP local + HTTPS réel)
+  et **téléchargement HF réel confirmé dans l'app** (Gemma 3 4B, 2 489 757 856
+  o, taille conforme au repo).
