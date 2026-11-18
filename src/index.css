@@ -103,6 +103,10 @@ body {
   text-align: center;
 }
 
+.drop.over {
+  border-color: var(--accent);
+}
+
 .drop-title {
   margin: 0 0 8px;
   font-size: 16px;

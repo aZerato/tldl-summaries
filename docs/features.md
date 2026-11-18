@@ -17,6 +17,10 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - Audio : wav, mp3, m4a, flac, ogg, opus — Vidéo : mp4, mov, mkv, webm, avi
 - Validation à l'import (format inconnu → message clair, pas de plant)
 - Un fichier à la fois (file d'attente = 💡 post-MVP)
+- **Glisser-déposer** : événement natif Tauri 2 `onDragDropEvent` (chemins
+  absolus, `dragDropEnabled: true`) — dans le webview Tauri 2, les `drop`
+  DOM ne se déclenchent pas (interception native) et `File.path` n'existe
+  pas ; le sélecteur passe par le plugin `dialog`
 - **Critères** : les 11 extensions ci-dessus acceptées sans crash ;
   durée + format affichés après sonde ; fichiers ≥ 2 Go gérés
 

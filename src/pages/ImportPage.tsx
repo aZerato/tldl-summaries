@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { probeMedia, runPipeline } from "../api/tauri";
@@ -22,6 +23,7 @@ export default function ImportPage({ config, onDone }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     if (!isTauri) return;
@@ -38,16 +40,38 @@ export default function ImportPage({ config, onDone }: Props) {
     };
   }, []);
 
-  async function pick(file: File) {
-    // En webview Tauri, les fichiers exposent leur chemin ; sinon on renvoie
-    // vers le sélecteur de fichiers.
-    const p = (file as { path?: string }).path;
-    if (!p) {
-      setError(
-        "Chemin du fichier non exposé — utilisez « Choisir un fichier ».",
-      );
-      return;
-    }
+  // Tauri 2 : le drop de fichiers est intercepté par la couche native — les
+  // événements DOM (dragover/drop) ne se déclenchent PAS dans le webview, et
+  // les `File` sandboxés n'exposent pas de `.path`. On écoute donc
+  // `onDragDropEvent`, qui fournit les chemins absolus des fichiers déposés.
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const t = event.payload.type;
+        if (t === "drop") {
+          const p = event.payload.paths[0];
+          if (p) pickPath(p);
+        } else if (t === "enter" || t === "over") {
+          setDragging(true);
+        } else {
+          // "leave" : drag annulé ou sorti de la fenêtre.
+          setDragging(false);
+        }
+      })
+      .then((u) => {
+        if (!cancelled) unlisten = u;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  async function pickPath(p: string) {
     setPath(p);
     setInfo(null);
     setError(null);
@@ -75,12 +99,7 @@ export default function ImportPage({ config, onDone }: Props) {
       ],
     });
     if (typeof p === "string") {
-      setPath(p);
-      setInfo(null);
-      setError(null);
-      probeMedia(p)
-        .then(setInfo)
-        .catch((e) => setError(String(e)));
+      pickPath(p);
     }
   }
 
@@ -106,27 +125,11 @@ export default function ImportPage({ config, onDone }: Props) {
 
   return (
     <div className="page">
-      <div
-        className="drop"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const f = e.dataTransfer.files[0];
-          if (f) pick(f);
-        }}
-      >
+      <div className={dragging ? "drop over" : "drop"}>
         <p className="drop-title">Glissez un fichier audio ou vidéo ici</p>
         <p className="muted">
           wav · mp3 · m4a · flac · ogg · opus — mp4 · mov · mkv · webm · avi
         </p>
-        <input
-          type="file"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) pick(f);
-          }}
-        />
         <div className="row" style={{ justifyContent: "center" }}>
           <button className="btn" onClick={choose}>
             Choisir un fichier…
