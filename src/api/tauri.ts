@@ -34,6 +34,8 @@ export const downloadModel = (id: string) =>
 export const cancelModelDownload = (id: string) =>
   invoke<boolean>("cancel_model_download", { id });
 
+export const deleteModel = (id: string) => invoke<null>("delete_model", { id });
+
 export const listHistory = (limit = 50) =>
   invoke<HistoryRecord[]>("list_history", { limit });
 

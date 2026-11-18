@@ -128,6 +128,16 @@ pub fn cancel_model_download(id: String) -> bool {
     models::cancel_download(&id)
 }
 
+/// Supprime un modèle local (F11) : le fichier est retiré de `models/`.
+#[tauri::command]
+pub fn delete_model(id: String) -> Result<(), String> {
+    let model = models::catalog()
+        .into_iter()
+        .find(|m| m.id == id)
+        .ok_or_else(|| "modèle inconnu".to_string())?;
+    models::delete(model.kind, &id)
+}
+
 /// Historique des traitements (plus récents en premier).
 #[tauri::command]
 pub fn list_history(

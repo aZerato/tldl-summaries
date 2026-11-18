@@ -19,6 +19,9 @@
 //! Fais passer le vrai moteur `tldl_lib::models::download` (fichier `.part`
 //! + renommage atomique, progression) sur l'`id` donné ; vérifie que la
 //! taille disque = progression = `Content-Length`, puis nettoie.
+//!   tldl-e2e delete <id>
+//! Fais passer `tldl_lib::models::delete` sur un fichier factice (id hors
+//! catalogue) : écriture, suppression, vérification de la disparition.
 //!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
@@ -34,6 +37,11 @@ fn main() {
     // (serveur local HTTP, ou HTTPS réel — le TLS rustls est donc aussi exercé).
     if argv.first().is_some_and(|a| a.as_str() == "download") {
         run_download_e2e(&argv[1..]);
+        return;
+    }
+    // Mode F11 : valider la suppression d'un modèle local.
+    if argv.first().is_some_and(|a| a.as_str() == "delete") {
+        run_delete_e2e(&argv[1..]);
         return;
     }
 
@@ -183,4 +191,35 @@ fn run_download_e2e(rest: &[String]) {
     }
     let _ = std::fs::remove_file(&path); // nettoyage (l'id n'est pas au catalogue)
     println!("E2E download OK : {size} octets (progression {}/{} = Content-Length)", last.0, last.1);
+}
+
+/// E2E de la suppression F11 (usage : `tldl-e2e delete <id>`).
+///
+/// Crée un fichier factice `whisper-<id>.bin` (id hors catalogue, aucun
+/// modèle réel n'est touché), le supprime via `tldl_lib::models::delete`
+/// et vérifie qu'il a bien disparu.
+fn run_delete_e2e(rest: &[String]) {
+    let id = match rest.first() {
+        Some(i) if !i.trim().is_empty() => i.trim().to_string(),
+        _ => {
+            eprintln!("usage : tldl-e2e delete <id>");
+            std::process::exit(2);
+        }
+    };
+    let path = tldl_lib::models::model_path(tldl_lib::models::ModelKind::Asr, &id);
+    std::fs::write(&path, b"tldl-e2e").unwrap_or_else(|e| {
+        eprintln!("ÉCHEC E2E delete : écriture du factice ({e})");
+        std::process::exit(1);
+    });
+    if let Err(e) = tldl_lib::models::delete(tldl_lib::models::ModelKind::Asr, &id) {
+        eprintln!("ÉCHEC E2E delete : {e}");
+        let _ = std::fs::remove_file(&path);
+        std::process::exit(1);
+    }
+    if path.exists() {
+        eprintln!("ÉCHEC E2E delete : le fichier subsiste ({path:?})");
+        let _ = std::fs::remove_file(&path);
+        std::process::exit(1);
+    }
+    println!("E2E delete OK : {path:?} supprimé");
 }

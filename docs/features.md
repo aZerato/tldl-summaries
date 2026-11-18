@@ -53,6 +53,7 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - ASR : modèle, quantification, device CPU/GPU
 - LLM : modèle, quantification, température, contexte
 - Téléchargements opt-in (taille affichée avant, progression, annulable)
+- Suppression d'un modèle local (« Supprimer » — le fichier quitte `models/`)
 - Estimation RAM/VRAM par configuration + test de charge
 - Profils : Léger / Équilibré / Puissant (cf. models.md)
 - **Critères** : changement de modèle sans redémarrer l'app ;
@@ -64,12 +65,14 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - Mécanique : source HF par modèle (models.md §5) ; écriture `.part` +
   renommage atomique (jamais un modèle à moitié) ; **taille affichée avant**,
   progression reçu/total, **annulable**, 1 téléchargement à la fois
+- **Suppression** : bouton « Supprimer » sur un modèle local (fichier retiré
+  de `models/`, le modèle redevient « à télécharger »)
 - **Hors ligne** : dépôt manuel du fichier dans `models/` (supporté + documenté)
 - **Critères** : après la 1ʳᵉ mise en place, l'app est 100 % utilisable hors ligne
 - **Statut** : code en place (backend `reqwest` blocking + rustls, UI avec
   barre + Annuler) ; **moteur validé E2E** (`tldl-e2e download` : HTTP local +
-  HTTPS réel) ; le téléchargement HF réel est à valider sur un réseau avec
-  egress Hugging Face (machine de dev sans egress HF)
+  HTTPS réel ; `tldl-e2e delete`) ; **téléchargement HF réel confirmé dans
+  l'app** (Gemma 3 4B 2,5 Go, whisper-medium 1,5 Go)
 
 ## Post-MVP
 

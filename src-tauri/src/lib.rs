@@ -31,6 +31,7 @@ pub fn run() {
             commands::list_models,
             commands::download_model,
             commands::cancel_model_download,
+            commands::delete_model,
             commands::list_history,
             commands::get_config,
             commands::set_config,

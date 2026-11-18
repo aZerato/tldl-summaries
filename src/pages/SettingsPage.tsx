@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   cancelModelDownload,
+  deleteModel,
   downloadModel,
   listModels,
   setConfig,
@@ -79,6 +80,13 @@ export default function SettingsPage({ config, onChange }: Props) {
     }
   }
 
+  function doDelete(m: ModelInfo) {
+    if (!window.confirm(`Supprimer « ${m.name} » de models/ ?`)) return;
+    deleteModel(m.id)
+      .then(() => listModels().then(setModels).catch(() => undefined))
+      .catch((err) => setError(String(err)));
+  }
+
   function dlControl(m: ModelInfo) {
     const active = dl && dl.id === m.id;
     if (active && dl) {
@@ -107,6 +115,19 @@ export default function SettingsPage({ config, onChange }: Props) {
         Télécharger ({m.sizeMb} Mo)
       </button>
     );
+  }
+
+  function rowCell(m: ModelInfo) {
+    if (m.available) {
+      return (
+        <span className="dl-cell">
+          <button className="btn danger" onClick={() => doDelete(m)}>
+            Supprimer
+          </button>
+        </span>
+      );
+    }
+    return <span className="dl-cell">{dlControl(m)}</span>;
   }
 
   return (
@@ -145,9 +166,7 @@ export default function SettingsPage({ config, onChange }: Props) {
               </span>
               {m.isDefault && <span className="badge">défaut</span>}
             </label>
-            {!m.available && (
-              <span className="dl-cell">{dlControl(m)}</span>
-            )}
+            {rowCell(m)}
           </div>
         ))}
       </section>
@@ -174,9 +193,7 @@ export default function SettingsPage({ config, onChange }: Props) {
               </span>
               {m.isDefault && <span className="badge">défaut</span>}
             </label>
-            {!m.available && (
-              <span className="dl-cell">{dlControl(m)}</span>
-            )}
+            {rowCell(m)}
           </div>
         ))}
       </section>

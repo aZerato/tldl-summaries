@@ -266,6 +266,7 @@ passe par un **binaire dédié** `tldl-e2e` (`src/tldl_e2e.rs`) : il ne lie que
 tldl-e2e <fichier_média> [dossier_ffmpeg]     # ou TLDL_E2E_INPUT / TLDL_FFMPEG_DIR
 TLDL_E2E_LLM=<id>                            # modèle LLM (sinon qwen25-7b-q4)
 tldl-e2e download <id> <url>                 # F11 : vrai moteur models::download
+tldl-e2e delete <id>                        # F11 : vrai moteur models::delete
 ```
 
 Le `dossier_ffmpeg` est **optionnel** : `media.rs` s'auto-localise
@@ -285,6 +286,10 @@ assertionne `taille disque = progression = Content-Length`, sans résidu
 `.part` en cas d'échec. Vérifié : HTTP local 3 MiB (OK), 404 (erreur nette,
 aucun `.part`), **HTTPS réel** (`.crate` crates.io, 83 669 o — TLS rustls +
 provider `aws-lc-rs` sur la cible MinGW, redirection suivie).
+
+Mode `delete` (F11) : passe le vrai moteur `models::delete` sur un fichier
+factice (id hors catalogue — aucun modèle réel n'est touché) : écriture,
+suppression, vérification de la disparition.
 
 > Outil annexe `tldl-manifest` (`src/manifest_tool.rs`) : diagnostic/patch du
 > manifest PE d'un binaire Windows (vérifie le v6, `dump` de l'arborescence

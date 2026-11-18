@@ -133,6 +133,19 @@ body {
   color: #fff;
 }
 
+.btn.danger {
+  border-color: var(--error);
+  color: var(--error);
+  background: transparent;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn.danger:hover {
+  background: var(--error);
+  color: #fff;
+}
+
 .file-card {
   margin-top: 16px;
   background: var(--bg-card);

@@ -373,3 +373,23 @@ pub fn download(
         }
     }
 }
+
+/// Suppression d'un modèle local (F11) : retire le fichier de `models/`.
+///
+/// Refus si un téléchargement est en cours pour ce modèle (le `.part` est
+/// alors actif). Le modèle supprimé redevient « à télécharger » dans l'UI ;
+/// un modèle sélectionné dans la config provoque la dégradation gracie
+/// habituelle (F4).
+pub fn delete(kind: ModelKind, id: &str) -> Result<(), String> {
+    if CANCELLERS.lock().unwrap().contains_key(id) {
+        return Err(
+            "un téléchargement est en cours pour ce modèle — annulez-le d'abord".into(),
+        );
+    }
+    let path = model_path(kind, id);
+    if !path.exists() {
+        return Err("aucun modèle local à supprimer".into());
+    }
+    std::fs::remove_file(&path)
+        .map_err(|e| format!("suppression impossible (fichier en usage ?) : {e}"))
+}

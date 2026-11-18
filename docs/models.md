@@ -48,6 +48,9 @@ Langue : détection auto avec biais FR ; option « forcer FR ».
 ## 4. Règles de gestion
 
 - Téléchargement **opt-in** (F11) ; hors ligne = dépôt manuel dans `models/`
+- **Suppression** d'un modèle local (F11) : bouton « Supprimer » sur un
+  modèle présent — le fichier est retiré de `models/`, le modèle redevient
+  « à télécharger »
 - Estimation affichée **avant** chaque téléchargement (F6)
 - Un seul LLM chargé à la fois (chargement/déchargement géré par l'app — F6)
 - Benchmarks (F12) : les valeurs mesurées remplacent les estimations ici
