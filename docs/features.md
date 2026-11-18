@@ -79,6 +79,13 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 ### F7 — Historique local (SQLite) 📋
 Liste des traitements (fichier, date, durée, modèles utilisés), recherche
 plein texte, réouverture d'un résultat.
+- **Statut** : code en place — consignation **auto après chaque pipeline
+  réussi** (texte + segments horodatés en JSON, résumé) ; onglet
+  « Historique » : liste (fichier, date, durée, modèles, extrait),
+  recherche plein texte (fichier / transcription / résumé, debounce 300 ms),
+  réouverture en double-vue (F5) ; migration SQLite idempotente
+  (`transcription_json`) ; E2E `tldl-e2e history` (va-et-retour factice dans
+  un dossier temporaire, jamais l'historique réel)
 
 ### F8 — Export 📋
 Transcription : txt / md / srt (horodatée). Résumé : md / txt.
@@ -100,3 +107,9 @@ Player synchronisé aux segments (clic = saut, reprise du segment).
 
 ### F14 - Travail par section 🔎
 Proposer de travailler soit sur le fichier complet ou sur des sections.
+
+### F15 - Pouvoir proposer des contextes de prompt
+Lorsque l'utilisateur va demander une transcription, il va pouvoir choisir ou creer un contexte d'analyse / résumé. Il peut créer des favoris afin de les réutiliser rapidement. Une page est dédiée pour la créer et gérer les contextes de prompt.
+
+### F16 - Eviter la transcription d'un fichier
+Si un fichier à déjà été analysé il faudrait que l'utilisateur soit averti. Veut-il forcer une nouvelle analyse ? Si oui, alors il continue, sinon il est redirigé vers la transcription correspondante. Il peut toutefois, créer plusieurs transcription / résumés selon les contextes de prompt.

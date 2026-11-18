@@ -51,7 +51,7 @@ pub async fn run_pipeline(
             c.use_gpu,
         )
     };
-    let input_copy = input;
+    let input_copy = input.clone();
     let res = tauri::async_runtime::spawn_blocking(move || {
         let opts = pipeline::PipelineOptions {
             asr_model,
@@ -73,7 +73,28 @@ pub async fn run_pipeline(
     })
     .await
     .map_err(|_| "thread pipeline interrompu".to_string())?;
-    res
+    let output = res?;
+
+    // F7 : consignation automatique dans l'historique (SQLite).
+    {
+        let transcription_json = serde_json::to_string(&output.transcription)
+            .map_err(|e| e.to_string())?;
+        let created = storage::now_epoch();
+        let st = state.storage.lock().unwrap();
+        st.save(
+            &input,
+            created,
+            output.duration_secs,
+            &output.asr_model,
+            &output.llm_model,
+            &output.transcription.text,
+            &transcription_json,
+            &output.summary_markdown,
+        )
+        .map_err(|e| format!("historique : {e}"))?;
+    }
+
+    Ok(output)
 }
 
 /// Catalogue des modèles + état local.
@@ -145,6 +166,24 @@ pub fn list_history(
     limit: Option<i64>,
 ) -> Result<Vec<storage::HistoryRecord>, String> {
     state.storage.lock().unwrap().list(limit.unwrap_or(50))
+}
+
+/// Enregistrement complet de l'historique (réouverture — F7).
+#[tauri::command]
+pub fn get_history(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<storage::HistoryRecord, String> {
+    state.storage.lock().unwrap().get(id)
+}
+
+/// Recherche plein texte dans l'historique (F7).
+#[tauri::command]
+pub fn search_history(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<Vec<storage::HistoryRecord>, String> {
+    state.storage.lock().unwrap().search(&query)
 }
 
 #[tauri::command]

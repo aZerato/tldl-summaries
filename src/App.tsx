@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import ImportPage from "./pages/ImportPage";
 import ResultPage from "./pages/ResultPage";
 import SettingsPage from "./pages/SettingsPage";
+import HistoryPage from "./pages/HistoryPage";
 import { getConfig } from "./api/tauri";
 import type { AppConfig, PipelineOutput } from "./types";
 
-type Page = "import" | "result" | "settings";
+type Page = "import" | "result" | "history" | "settings";
 
 export default function App() {
   const [page, setPage] = useState<Page>("import");
@@ -37,6 +38,12 @@ export default function App() {
             Résultat
           </button>
           <button
+            className={page === "history" ? "tab active" : "tab"}
+            onClick={() => setPage("history")}
+          >
+            Historique
+          </button>
+          <button
             className={page === "settings" ? "tab active" : "tab"}
             onClick={() => setPage("settings")}
           >
@@ -58,6 +65,14 @@ export default function App() {
         {page === "result" && result && <ResultPage result={result} />}
         {page === "settings" && config && (
           <SettingsPage config={config} onChange={setConfigState} />
+        )}
+        {page === "history" && (
+          <HistoryPage
+            onOpen={(r) => {
+              setResult(r);
+              setPage("result");
+            }}
+          />
         )}
       </main>
     </div>

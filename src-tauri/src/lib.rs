@@ -5,7 +5,7 @@ mod llm;
 mod media;
 pub mod models;
 pub mod pipeline;
-mod storage;
+pub mod storage;
 
 use std::sync::Mutex;
 
@@ -33,6 +33,8 @@ pub fn run() {
             commands::cancel_model_download,
             commands::delete_model,
             commands::list_history,
+            commands::get_history,
+            commands::search_history,
             commands::get_config,
             commands::set_config,
         ])

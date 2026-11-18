@@ -63,11 +63,15 @@ export interface DownloadProgress {
 export interface HistoryRecord {
   id: number;
   file: string;
-  created: string;
+  /** Horodatage Unix (secondes) — à formater côté UI. */
+  created: number;
   durationSecs: number;
   asrModel: string;
   llmModel: string;
   transcription: string;
+  /** JSON complet du `Transcription` (texte + segments + langue) ;
+   *  `null` sur les lignes écrites avant la migration. */
+  transcriptionJson: string | null;
   summaryMarkdown: string;
 }
 

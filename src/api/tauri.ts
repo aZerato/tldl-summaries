@@ -39,6 +39,12 @@ export const deleteModel = (id: string) => invoke<null>("delete_model", { id });
 export const listHistory = (limit = 50) =>
   invoke<HistoryRecord[]>("list_history", { limit });
 
+export const getHistory = (id: number) =>
+  invoke<HistoryRecord>("get_history", { id });
+
+export const searchHistory = (query: string) =>
+  invoke<HistoryRecord[]>("search_history", { query });
+
 export const getConfig = () => invoke<AppConfig>("get_config");
 
 export const setConfig = (config: AppConfig) =>

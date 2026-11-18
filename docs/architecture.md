@@ -164,7 +164,9 @@ Vérifié (cible GNU, Qwen2.5-1.5B Q4_K_M) : ASR small → transcription, puis
 ## 7. Stockage & confidentialité
 
 - **Historique** : SQLite local (fichier, date, durée, modèles utilisés,
-  textes transcription + résumé)
+  textes transcription + résumé) — consignation **auto après chaque
+  pipeline réussi** (texte + segments horodatés en JSON), recherche plein
+  texte, réouverture du résultat (F7)
 - **Zéro télémétrie**, zéro crash report, zéro analytique
 - **Fichiers source non copiés** : l'app ne travaille que sur la piste audio
   extraite ; le média original reste chez l'utilisateur
@@ -267,6 +269,7 @@ tldl-e2e <fichier_média> [dossier_ffmpeg]     # ou TLDL_E2E_INPUT / TLDL_FFMPEG
 TLDL_E2E_LLM=<id>                            # modèle LLM (sinon qwen25-7b-q4)
 tldl-e2e download <id> <url>                 # F11 : vrai moteur models::download
 tldl-e2e delete <id>                        # F11 : vrai moteur models::delete
+tldl-e2e history                            # F7 : storage save/list/get/search
 ```
 
 Le `dossier_ffmpeg` est **optionnel** : `media.rs` s'auto-localise
@@ -290,6 +293,10 @@ provider `aws-lc-rs` sur la cible MinGW, redirection suivie).
 Mode `delete` (F11) : passe le vrai moteur `models::delete` sur un fichier
 factice (id hors catalogue — aucun modèle réel n'est touché) : écriture,
 suppression, vérification de la disparition.
+
+Mode `history` (F7) : va-et-retour factice `tldl_lib::storage` dans un
+dossier temporaire (jamais l'historique réel de l'app) — save → list →
+get → search plein texte, puis nettoyage.
 
 > Outil annexe `tldl-manifest` (`src/manifest_tool.rs`) : diagnostic/patch du
 > manifest PE d'un binaire Windows (vérifie le v6, `dump` de l'arborescence

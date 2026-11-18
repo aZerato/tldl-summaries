@@ -22,6 +22,9 @@
 //!   tldl-e2e delete <id>
 //! Fais passer `tldl_lib::models::delete` sur un fichier factice (id hors
 //! catalogue) : écriture, suppression, vérification de la disparition.
+//!   tldl-e2e history
+//! Fais passer `tldl_lib::storage` (save/list/get/search) sur un dossier
+//! temporaire : jamais l'historique réel de l'app.
 //!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
@@ -42,6 +45,11 @@ fn main() {
     // Mode F11 : valider la suppression d'un modèle local.
     if argv.first().is_some_and(|a| a.as_str() == "delete") {
         run_delete_e2e(&argv[1..]);
+        return;
+    }
+    // Mode F7 : valider l'historique SQLite (dossier temporaire).
+    if argv.first().is_some_and(|a| a.as_str() == "history") {
+        run_history_e2e();
         return;
     }
 
@@ -222,4 +230,141 @@ fn run_delete_e2e(rest: &[String]) {
         std::process::exit(1);
     }
     println!("E2E delete OK : {path:?} supprimé");
+}
+
+/// E2E de l'historique F7 (usage : `tldl-e2e history`).
+///
+/// Va-et-retour factice dans un dossier temporaire (jamais l'historique réel
+/// de l'app) : save → list → get → search, puis nettoyage.
+fn run_history_e2e() {
+    use tldl_lib::storage;
+
+    let dir = std::env::temp_dir().join("tldl-e2e-history");
+    let _ = std::fs::remove_dir_all(&dir);
+    let st = match storage::Storage::open(&dir) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E history : ouverture ({e})");
+            std::process::exit(1);
+        }
+    };
+
+    let json = r#"{"text":"Bonjour le monde.","segments":[{"start":0.0,"end":2.5,"text":"Bonjour le monde."}],"language":"fr"}"#;
+    let mk = |file: &str, dur: f64, asr: &str, llm: &str, text: &str, sum: &str| {
+        st.save(file, storage::now_epoch(), dur, asr, llm, text, json, sum)
+    };
+    let id1 = match mk(
+        "C:\\fake\\audio1.wav",
+        125.0,
+        "small",
+        "gemma3-4b-q4",
+        "Bonjour le monde. Texte de test pour la recherche plein texte.",
+        "## Résumé\n- point un",
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E history : save ({e})");
+            std::process::exit(1);
+        }
+    };
+    let id2 = match mk(
+        "C:\\fake\\video2.mp4",
+        30.0,
+        "medium",
+        "qwen25-7b-q4",
+        "Deuxième enregistrement, sans résumé.",
+        "",
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E history : save ({e})");
+            std::process::exit(1);
+        }
+    };
+
+    // list : plus récents en premier.
+    let rows = match st.list(50) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E history : list ({e})");
+            std::process::exit(1);
+        }
+    };
+    if rows.len() != 2 || rows[0].id != id2 || rows[1].id != id1 {
+        eprintln!(
+            "ÉCHEC E2E history : list inattendu ({} lignes, attendu {id2} puis {id1})",
+            rows.len()
+        );
+        std::process::exit(1);
+    }
+    if rows[0].transcription_json.as_deref() != Some(json) {
+        eprintln!("ÉCHEC E2E history : transcription_json absente");
+        std::process::exit(1);
+    }
+    let c = rows[0].created;
+    if !(1_500_000_000..=4_100_000_000).contains(&c) {
+        eprintln!("ÉCHEC E2E history : horodatage inattendu ({c})");
+        std::process::exit(1);
+    }
+
+    // get : contenu complet de l'enregistrement le plus ancien.
+    match st.get(id1) {
+        Ok(g) => {
+            if g.transcription
+                != "Bonjour le monde. Texte de test pour la recherche plein texte."
+                || g.transcription_json.as_deref() != Some(json)
+                || g.summary_markdown != "## Résumé\n- point un"
+                || g.duration_secs != 125.0
+            {
+                eprintln!("ÉCHEC E2E history : get incohérent");
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("ÉCHEC E2E history : get ({e})");
+            std::process::exit(1);
+        }
+    }
+    if st.get(99_999_999).is_ok() {
+        eprintln!("ÉCHEC E2E history : get(99999999) aurait dû échouer");
+        std::process::exit(1);
+    }
+
+    // search : plein texte (résumé, fichier) — un seul coupable chacune.
+    let s = match st.search("point un") {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E history : search ({e})");
+            std::process::exit(1);
+        }
+    };
+    if s.len() != 1 || s[0].id != id1 {
+        eprintln!("ÉCHEC E2E history : search « point un » → {} lignes", s.len());
+        std::process::exit(1);
+    }
+    let s2 = match st.search("video2") {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E history : search ({e})");
+            std::process::exit(1);
+        }
+    };
+    if s2.len() != 1 || s2[0].id != id2 {
+        eprintln!("ÉCHEC E2E history : search « video2 » → {} lignes", s2.len());
+        std::process::exit(1);
+    }
+    let s3 = match st.search("inexistant-xyz") {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E history : search ({e})");
+            std::process::exit(1);
+        }
+    };
+    if !s3.is_empty() {
+        eprintln!("ÉCHEC E2E history : search « inexistant-xyz » → {} lignes", s3.len());
+        std::process::exit(1);
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+    println!("E2E history OK : save/list/get/search (dossier temporaire, jamais l'historique réel)");
 }

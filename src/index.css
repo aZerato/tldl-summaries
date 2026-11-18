@@ -342,3 +342,52 @@ select {
   border-radius: 6px;
   padding: 6px 8px;
 }
+
+.search {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.history-row:hover {
+  border-color: var(--accent);
+}
+
+.history-row.opening {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.history-file {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.history-excerpt {
+  color: var(--muted);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
