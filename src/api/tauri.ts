@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
   DeviceInfo,
+  Folder,
   HistoryRecord,
   MediaInfo,
   ModelInfo,
@@ -72,6 +73,30 @@ export const reSummarize = (id: number, contextId: number | null) =>
 /** Supprime un enregistrement de l'historique (F7). */
 export const deleteHistory = (id: number) =>
   invoke<null>("delete_history", { id });
+
+/** Crée un dossier de rangement (F19) ; renvoie l'id. */
+export const createFolder = (name: string) =>
+  invoke<number>("create_folder", { name });
+
+/** Dossiers de rangement (F19) + compte d'enregistrements de chacun. */
+export const listFolders = () => invoke<Folder[]>("list_folders");
+
+/** Supprime un dossier (F19) ; ses résultats repassent « Sans dossier ». */
+export const deleteFolder = (id: number) => invoke<null>("delete_folder", { id });
+
+/** Rangement (F19) : `folderId = null` = « Sans dossier ». */
+export const moveRecord = (id: number, folderId: number | null) =>
+  invoke<null>("move_record", {
+    id,
+    folderId: folderId === null ? null : folderId,
+  });
+
+/** Enregistrements rangés dans un dossier (F19) — `null` = « Sans dossier ». */
+export const listHistoryFolder = (folderId: number | null, limit = 50) =>
+  invoke<HistoryRecord[]>("list_history_folder", {
+    folder: folderId === null ? null : folderId,
+    limit,
+  });
 
 /** Devices de calcul disponibles (F10) — CPU + GPU/iGPU détectés. */
 export const listDevices = () => invoke<DeviceInfo[]>("list_devices");

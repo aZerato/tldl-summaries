@@ -10,10 +10,13 @@ import {
   getHistory,
   historyForFile,
   listContexts,
+  listFolders,
+  moveRecord,
   reSummarize,
   toOutput,
 } from "../api/tauri";
 import type {
+  Folder,
   HistoryRecord,
   PipelineOutput,
   PromptContext,
@@ -75,6 +78,10 @@ export default function ResultPage({
   const [summaries, setSummaries] = useState<HistoryRecord[] | null>(null);
   const [opening, setOpening] = useState<number | null>(null);
 
+  // F19 : dossiers de rangement — le sélecteur ici est l'alternative au
+  // glisser-déposer de la page Historique.
+  const [folders, setFolders] = useState<Folder[]>([]);
+
   useEffect(() => {
     let cancelled = false;
     listContexts()
@@ -109,6 +116,21 @@ export default function ResultPage({
       cancelled = true;
     };
   }, [result.file, recordId]);
+
+  // F19 : catalogue des dossiers (une seule fois).
+  useEffect(() => {
+    let cancelled = false;
+    listFolders()
+      .then((fs) => {
+        if (!cancelled) setFolders(fs);
+      })
+      .catch(() => {
+        if (!cancelled) setFolders([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // F15/F16 : la commande `re_summarize` émet `pipeline-progress`
   // (étapes `llm` → `done`) — même contrat que le pipeline complet de
@@ -217,6 +239,21 @@ export default function ResultPage({
     }
   }
 
+  // F19 : rangement de ce résultat dans un dossier (ou « Sans dossier »).
+  async function fileRecord(fid: number | null) {
+    if (recordId === null) return;
+    try {
+      await moveRecord(recordId, fid);
+      const rows = await historyForFile(result.file);
+      setSummaries(rows);
+    } catch (e) {
+      setResumError(String(e));
+    }
+  }
+
+  // F19 : rangement courant de l'enregistrement affiché.
+  const currentRec = summaries?.find((r) => r.id === recordId);
+
   return (
     <div className="page">
       <div className="row spread">
@@ -300,6 +337,35 @@ export default function ResultPage({
       )}
       {resumError && <div className="error">{resumError}</div>}
       {progress && <Progress progress={progress} />}
+
+      {/* F19 : rangement du résultat — alternative au glisser-déposer de
+          la page Historique. */}
+      {recordId !== null && summaries !== null && (
+        <div className="row">
+          <span className="muted">Rangement</span>
+          <select
+            className="folder-pick"
+            value={
+              currentRec
+                ? currentRec.folderId === null
+                  ? ""
+                  : String(currentRec.folderId)
+                : ""
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              void fileRecord(v === "" ? null : Number(v));
+            }}
+          >
+            <option value="">Sans dossier</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {tab === "resume" ? (
         result.summaryMarkdown ? (

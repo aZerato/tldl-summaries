@@ -243,3 +243,37 @@ Permettre à l'utilisateur de pointer sur un provider local ou web IA (mais à s
 
 ### F18 - Permettre à l'utilisateur de mettre une url pour télécharger un modèle autre que ceux conseillés
 Dans le mode avancé également.
+
+### F19 - Ranger les résultats dans des dossiers 🔧
+Dossiers créables par l'utilisateur pour trier les résultats ;
+**drag & drop** d'un résultat (ligne d'historique) vers un dossier, et
+d'un dossier vers un autre dossier.
+- **Stockage (SQLite)** : table `folders` (nom, horodatage) + colonne
+  `records.folder_id` — **au plus un** dossier par enregistrement,
+  `NULL` = « Sans dossier » (état par défaut) ; migration idempotente à
+  l'ouverture (colonne `folder_id`) ; **supprimer un dossier ne supprime
+  aucun résultat** (ses enregistrements repassent « Sans dossier ») ;
+  le re-résumé (F16) range le nouveau résumé dans le dossier de
+  l'enregistrement d'origine
+- **Commandes** : `create_folder`, `list_folders` (+ compte
+  d'enregistrements par dossier), `delete_folder`, `move_record`
+  (enregistrement → dossier, ou « Sans dossier » — erreur si
+  l'enregistrement ou le dossier est introuvable),
+  `list_history_folder` (vue d'un dossier, plus récents en premier ;
+  `NULL` = « Sans dossier »)
+- **UI (historique)** : panneau latéral « Dossiers » — « Sans dossier »
+  + un item par dossier (compte de lignes, « Suppr. » avec confirmation
+  native — ses résultats repassent « Sans dossier »), création rapide
+  (le nouveau dossier s'ouvre) ; la liste affiche le contenu du dossier
+  ouvert (défaut : « Sans dossier ») ; les lignes sont **glissables**
+  (drag & drop HTML5 dans le webview — indépendant de l'interception
+  native des fichiers OS, cf. F1) vers un dossier ou « Sans dossier »
+  (cible surlignée au survol) ; sélecteur « ranger dans un dossier »
+  par ligne (alternative au glisser-déposer) ; la recherche plein texte
+  (F7) reste **globale** (tous dossiers)
+- **UI (résultat)** : sélecteur « Rangement » du résultat affiché (même
+  commande `move_record` ; l'enregistrement est identifié par son id
+  traçé dans `App`)
+- **Statut** : code en place (storage + test `roundtrip_folders` +
+  commandes + UI + E2E `tldl-e2e folders`) ; frontend vert ; à valider
+  dans l'app

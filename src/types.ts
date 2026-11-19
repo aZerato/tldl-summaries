@@ -90,6 +90,20 @@ export interface HistoryRecord {
    *  `null` sur les lignes écrites avant la migration. */
   transcriptionJson: string | null;
   summaryMarkdown: string;
+  /** Dossier de rangement (F19) ; `null` = « Sans dossier ». */
+  folderId: number | null;
+}
+
+/** Dossier de rangement (F19) : les résultats sont rangés dans au plus un
+ *  dossier ; « Sans dossier » est l'état par défaut (jamais supprimé par
+ *  la suppression d'un dossier). */
+export interface Folder {
+  id: number;
+  name: string;
+  /** Horodatage Unix (secondes) — à formater côté UI. */
+  created: number;
+  /** Nombre d'enregistrements rangés dans ce dossier. */
+  count: number;
 }
 
 /** Contexte de prompt (F15) — instructions de **résumé** réutilisables :

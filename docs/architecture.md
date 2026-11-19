@@ -197,6 +197,12 @@ Vérifié (cible GNU, Qwen2.5-1.5B Q4_K_M) : ASR small → transcription, puis
   (nom, instructions, favori, horodatage) ; le nom du contexte utilisé est
   consigné dans `records` (`context_name`) ; migration idempotente à
   l'ouverture (colonne `context_name`)
+- **Dossiers de rangement (F19)** : table `folders` de la même base
+  SQLite (nom, horodatage) + colonne `records.folder_id` — au plus un
+  dossier par enregistrement, `NULL` = « Sans dossier » ; la suppression
+  d'un dossier ne supprime aucun résultat (ses enregistrements repassent
+  « Sans dossier ») ; migration idempotente à l'ouverture (colonne
+  `folder_id`)
 - **Zéro télémétrie**, zéro crash report, zéro analytique
 - **Fichiers source non copiés** : l'app ne travaille que sur la piste audio
   extraite ; le média original reste chez l'utilisateur
@@ -291,6 +297,12 @@ Détails d'intégration (F3, ADR-002) :
   sans le `bin\x64` runtime. `vscmd_env.txt` est un *snapshot* de la
   toolchain VS de la machine (chemins absolus) : à régénérer si le VS Build
   Tools se déplace.
+- **Build CPU figé** : `build.rs` pousse `GGML_CUDA=OFF` **explicitement**
+  (chemin CPU) — le cache CMake est sticky : sans flag explicite, une
+  config `TLDL_GPU=cuda` antérieure (`GGML_CUDA=ON`) persisterait au
+  passage GPU → CPU, et le lien casserait (symbole
+  `ggml_backend_cuda_reg` orphelin — l'archive `ggml-cua` n'est liée que
+  sous le cfg `tldl_gpu_cuda`)
 - `rusqlite` est épinglé à **0.38** (dernière version avec la feature
   `bundled`) : SQLite est compilé dans l'app, aucune dépendance système
   (portabilité C1/C2).

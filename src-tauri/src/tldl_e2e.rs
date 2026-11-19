@@ -38,6 +38,10 @@
 //! LLM) → nouvel enregistrement → `find_by_file` (dossier temporaire, jamais
 //! l'historique réel). `TLDL_E2E_LLM` = modèle (défaut `qwen25-7b-q4`) ;
 //! `TLDL_E2E_GPU=1` → offload GPU (`n_gpu_layers = -1`), sinon CPU.
+//!   tldl-e2e folders
+//! Fais passer `tldl_lib::storage` (dossiers de rangement, F19 :
+//! create/move/list/delete sans perte) sur un dossier temporaire : jamais
+//! l'historique réel de l'app.
 //!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
@@ -78,6 +82,11 @@ fn main() {
     // Mode F15/F16 : re-résumé sans re-transcription (dossier temporaire).
     if argv.first().is_some_and(|a| a.as_str() == "resummarize") {
         run_resummarize_e2e();
+        return;
+    }
+    // Mode F19 : dossiers de rangement (dossier temporaire).
+    if argv.first().is_some_and(|a| a.as_str() == "folders") {
+        run_folders_e2e();
         return;
     }
 
@@ -710,4 +719,167 @@ fn run_resummarize_e2e() {
 
     let _ = std::fs::remove_dir_all(&dir);
     println!("E2E resummarize OK : re-résumé LLM seul, transcription réutilisée (jamais l'historique réel)");
+}
+
+/// E2E des dossiers de rangement F19 (usage : `tldl-e2e folders`).
+///
+/// Va-et-retour factice dans un dossier temporaire (jamais l'historique réel
+/// de l'app) : create → save → move → list (comptes) → sortie vers « Sans
+/// dossier » → delete (sans perte), puis nettoyage.
+fn run_folders_e2e() {
+    use tldl_lib::storage;
+
+    let dir = std::env::temp_dir().join("tldl-e2e-folders");
+    let _ = std::fs::remove_dir_all(&dir);
+    let st = match storage::Storage::open(&dir) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E folders : ouverture ({e})");
+            std::process::exit(1);
+        }
+    };
+
+    let json = r#"{"text":"Bonjour le monde.","segments":[],"language":"fr"}"#;
+    let mk = |file: &str, ctx: &str, text: &str, sum: &str| {
+        st.save(
+            file,
+            storage::now_epoch(),
+            10.0,
+            "small",
+            "gemma3-4b-q4",
+            "CPU",
+            ctx,
+            text,
+            json,
+            sum,
+        )
+    };
+    let a = match mk(
+        "C:\\fake\\audio1.wav",
+        "Contexte par défaut",
+        "premier texte",
+        "résumé A",
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E folders : save ({e})");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::process::exit(1);
+        }
+    };
+    let b = match mk("C:\\fake\\video2.mp4", "Contrôle qualité", "deuxième texte", "résumé B") {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E folders : save ({e})");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::process::exit(1);
+        }
+    };
+
+    let f1 = match st.create_folder("Comptes rendus") {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E folders : create ({e})");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::process::exit(1);
+        }
+    };
+
+    // Rangement + compte du dossier.
+    if let Err(e) = st.move_record(a, Some(f1)) {
+        eprintln!("ÉCHEC E2E folders : move a -> dossier ({e})");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+    let folders = match st.list_folders() {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E folders : list ({e})");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::process::exit(1);
+        }
+    };
+    if folders.len() != 1 || folders[0].id != f1 || folders[0].count != 1 {
+        eprintln!("ÉCHEC E2E folders : list inattendue ({folders:?})");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+
+    // Contenu du dossier + « Sans dossier ».
+    let in_f1 = match st.list_in_folder(Some(f1), 50) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E folders : list_in_folder ({e})");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::process::exit(1);
+        }
+    };
+    if in_f1.len() != 1 || in_f1[0].id != a || in_f1[0].folder_id != Some(f1) {
+        eprintln!("ÉCHEC E2E folders : contenu du dossier inattendu ({in_f1:?})");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+    let sans = match st.list_in_folder(None, 50) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E folders : « Sans dossier » ({e})");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::process::exit(1);
+        }
+    };
+    if sans.len() != 1 || sans[0].id != b {
+        eprintln!("ÉCHEC E2E folders : « Sans dossier » inattendu ({sans:?})");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+
+    // Sortie vers « Sans dossier » (un seul dossier par enregistrement).
+    if let Err(e) = st.move_record(a, None) {
+        eprintln!("ÉCHEC E2E folders : move a -> « Sans dossier » ({e})");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+    if st.list_in_folder(None, 50).unwrap().len() != 2 {
+        eprintln!("ÉCHEC E2E folders : « Sans dossier » incomplet après sortie");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+
+    // Cas d'erreur : dossier inconnu, enregistrement inconnu.
+    if st.move_record(b, Some(9_999_999)).is_ok() {
+        eprintln!("ÉCHEC E2E folders : move vers dossier inconnu aurait dû échouer");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+    if st.move_record(9_999_999, None).is_ok() {
+        eprintln!("ÉCHEC E2E folders : move d'enregistrement inconnu aurait dû échouer");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+
+    // Suppression : les enregistrements repassent « Sans dossier »
+    // (jamais supprimés) ; double suppression = erreur.
+    if let Err(e) = st.delete_folder(f1) {
+        eprintln!("ÉCHEC E2E folders : delete ({e})");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+    if st.delete_folder(f1).is_ok() {
+        eprintln!("ÉCHEC E2E folders : double delete aurait dû échouer");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+    if !st.list_folders().unwrap().is_empty() {
+        eprintln!("ÉCHEC E2E folders : dossiers résiduels");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+    if st.get(a).unwrap().folder_id.is_some() {
+        eprintln!("ÉCHEC E2E folders : a encore rangé après delete");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+    println!("E2E folders OK : create/move/list/delete sans perte (dossier temporaire, jamais l'historique réel)");
 }

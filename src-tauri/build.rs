@@ -292,7 +292,13 @@ fn build_llama(
         }
         Gpu::Metal => args.push(cfg("GGML_METAL", "ON")),
         Gpu::Vulkan => args.push(cfg("GGML_VULKAN", "ON")),
-        Gpu::Cpu => {}
+        // Le cache CMake est sticky : sans flag explicite, une config GPU
+        // antérieure (GGML_CUDA=ON) persisterait au passage GPU → CPU et
+        // casserait le lien (symbole `ggml_backend_cuda_reg` orphelin,
+        // l'archive `ggml-cua` n'étant liée qu'au cfg `tldl_gpu_cuda`).
+        Gpu::Cpu => {
+            args.push(cfg("GGML_CUDA", "OFF"))
+        }
     }
     if *tc == Toolchain::Gnu {
         args.push(String::from("-G"));
@@ -486,7 +492,13 @@ fn build_whisper(
         }
         Gpu::Metal => args.push(cfg("GGML_METAL", "ON")),
         Gpu::Vulkan => args.push(cfg("GGML_VULKAN", "ON")),
-        Gpu::Cpu => {}
+        // Le cache CMake est sticky : sans flag explicite, une config GPU
+        // antérieure (GGML_CUDA=ON) persisterait au passage GPU → CPU et
+        // casserait le lien (symbole `ggml_backend_cuda_reg` orphelin,
+        // l'archive `ggml-cua` n'étant liée qu'au cfg `tldl_gpu_cuda`).
+        Gpu::Cpu => {
+            args.push(cfg("GGML_CUDA", "OFF"))
+        }
     }
     if *tc == Toolchain::Gnu {
         // `ninja` est fourni par WinLibs ; CMake le trouve sur le PATH

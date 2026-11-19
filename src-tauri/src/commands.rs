@@ -214,6 +214,16 @@ pub async fn re_summarize(
         )
         .map_err(|e| format!("historique : {e}"))?
     };
+    // F19 : le nouveau résumé reste rangé dans le dossier de
+    // l'enregistrement d'origine (s'il y en est un).
+    if rec.folder_id.is_some() {
+        state
+            .storage
+            .lock()
+            .unwrap()
+            .move_record(new_id, rec.folder_id)
+            .map_err(|e| format!("dossiers : {e}"))?;
+    }
     let st = state.storage.lock().unwrap();
     st.get(new_id).map_err(|e| format!("historique : {e}"))
 }
@@ -346,6 +356,70 @@ pub fn delete_history(
         .map_err(|e| format!("historique : {e}"))
 }
 
+/// Crée un dossier de rangement (F19) ; renvoie l'id de la ligne.
+#[tauri::command]
+pub fn create_folder(state: State<'_, AppState>, name: String) -> Result<i64, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("un nom de dossier est requis".into());
+    }
+    state
+        .storage
+        .lock()
+        .unwrap()
+        .create_folder(name)
+        .map_err(|e| format!("dossiers : {e}"))
+}
+
+/// Dossiers de rangement (F19) + nombre d'enregistrements de chacun.
+#[tauri::command]
+pub fn list_folders(state: State<'_, AppState>) -> Result<Vec<storage::Folder>, String> {
+    state.storage.lock().unwrap().list_folders()
+}
+
+/// Supprime un dossier (F19) ; ses résultats repassent « Sans dossier »
+/// (jamais supprimés) ; erreur si introuvable.
+#[tauri::command]
+pub fn delete_folder(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    state
+        .storage
+        .lock()
+        .unwrap()
+        .delete_folder(id)
+        .map_err(|e| format!("dossiers : {e}"))
+}
+
+/// Rangement (F19) : déplace un enregistrement vers un dossier, ou vers
+/// « Sans dossier » (`folder_id = None`).
+#[tauri::command]
+pub fn move_record(
+    state: State<'_, AppState>,
+    id: i64,
+    folder_id: Option<i64>,
+) -> Result<(), String> {
+    state
+        .storage
+        .lock()
+        .unwrap()
+        .move_record(id, folder_id)
+        .map_err(|e| format!("dossiers : {e}"))
+}
+
+/// Enregistrements rangés dans un dossier (F19) — `folder = None` =
+/// « Sans dossier ». Plus récents en premier.
+#[tauri::command]
+pub fn list_history_folder(
+    state: State<'_, AppState>,
+    folder: Option<i64>,
+    limit: Option<i64>,
+) -> Result<Vec<storage::HistoryRecord>, String> {
+    state
+        .storage
+        .lock()
+        .unwrap()
+        .list_in_folder(folder, limit.unwrap_or(50))
+}
+
 /// Contextes de prompt (F15) — favoris d'abord.
 #[tauri::command]
 pub fn list_contexts(
@@ -444,6 +518,7 @@ mod tests {
             transcription: "Texte intégral de la rencontre.".into(),
             transcription_json: json.map(str::to_string),
             summary_markdown: String::new(),
+            folder_id: None,
         }
     }
 

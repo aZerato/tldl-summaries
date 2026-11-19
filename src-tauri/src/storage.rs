@@ -1,5 +1,5 @@
-//! Historique local des traitements (SQLite) — F7 — et contextes de prompt
-//! (F15).
+//! Historique local des traitements (SQLite) — F7 —, contextes de prompt
+//! (F15) et dossiers de rangement (F19).
 //!
 //! Chaque pipeline réussi est automatiquement consigné : fichier, horodatage
 //! Unix (secondes, formaté côté frontend), durée, modèles, nom du contexte
@@ -28,6 +28,21 @@ pub struct PromptContext {
     pub created: i64,
 }
 
+/// Dossier de rangement (F19) : les résultats de l'historique sont rangés
+/// dans **au plus un** dossier ; `records.folder_id = NULL` = « Sans
+/// dossier ». La suppression d'un dossier ne supprime aucun résultat :
+/// ses enregistrements repassent « Sans dossier ».
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Folder {
+    pub id: i64,
+    pub name: String,
+    /// Horodatage Unix (secondes) — formaté côté frontend.
+    pub created: i64,
+    /// Nombre d'enregistrements rangés dans ce dossier.
+    pub count: i64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryRecord {
@@ -49,6 +64,8 @@ pub struct HistoryRecord {
     /// `None` sur les lignes écrites avant la migration.
     pub transcription_json: Option<String>,
     pub summary_markdown: String,
+    /// Dossier de rangement (F19) ; `None` = « Sans dossier ».
+    pub folder_id: Option<i64>,
 }
 
 pub struct Storage {
@@ -79,6 +96,11 @@ impl Storage {
                     instructions TEXT NOT NULL,
                     is_favorite INTEGER NOT NULL DEFAULT 0,
                     created TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS folders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    created TEXT NOT NULL
                 );",
             )
             .map_err(|e| e.to_string())?;
@@ -88,7 +110,7 @@ impl Storage {
 
     /// Migration idempotente : ajoute les colonnes manquantes aux bases
     /// existantes (`transcription_json` — F7, `device` — F10,
-    /// `context_name` — F15).
+    /// `context_name` — F15, `folder_id` — F19).
     fn migrate(conn: &Connection) -> Result<(), String> {
         let cols = Self::table_columns(conn, "records")?;
         if !cols.contains(&"transcription_json".to_string()) {
@@ -104,6 +126,11 @@ impl Storage {
         if !cols.contains(&"context_name".to_string()) {
             conn
                 .execute_batch("ALTER TABLE records ADD COLUMN context_name TEXT")
+                .map_err(|e| e.to_string())?;
+        }
+        if !cols.contains(&"folder_id".to_string()) {
+            conn
+                .execute_batch("ALTER TABLE records ADD COLUMN folder_id INTEGER")
                 .map_err(|e| e.to_string())?;
         }
         Ok(())
@@ -166,7 +193,7 @@ impl Storage {
         let mut st = self
             .conn
             .prepare(
-                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown
+                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
                  FROM records
                  ORDER BY id DESC
                  LIMIT ?1",
@@ -187,7 +214,7 @@ impl Storage {
         let mut st = self
             .conn
             .prepare(
-                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown
+                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
                  FROM records
                  WHERE id = ?1",
             )
@@ -208,7 +235,7 @@ impl Storage {
         let mut st = self
             .conn
             .prepare(
-                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown
+                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
                  FROM records
                  WHERE file = ?1
                  ORDER BY id DESC",
@@ -230,7 +257,7 @@ impl Storage {
         let mut st = self
             .conn
             .prepare(
-                r"SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown
+                r"SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
                  FROM records
                  WHERE file LIKE ?1 ESCAPE '\'
                     OR transcription LIKE ?1 ESCAPE '\'
@@ -259,6 +286,117 @@ impl Storage {
             return Err("enregistrement introuvable".to_string());
         }
         Ok(())
+    }
+
+    // --- Dossiers de rangement (F19) ---
+
+    /// Crée un dossier ; renvoie l'id de la ligne.
+    pub fn create_folder(&self, name: &str) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO folders (name, created) VALUES (?1, ?2)",
+                params![name, now_epoch()],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Liste des dossiers (ordre de création) + nombre d'enregistrements
+    /// rangés dans chacun.
+    pub fn list_folders(&self) -> Result<Vec<Folder>, String> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT f.id, f.name, f.created,
+                       (SELECT COUNT(*) FROM records r WHERE r.folder_id = f.id)
+                  FROM folders f
+                  ORDER BY f.id ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = st
+            .query_map(params!(), |r| row_to_folder(r))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    /// Supprime un dossier (F19) ; ses enregistrements repassent « Sans
+    /// dossier » (jamais supprimés). Erreur si introuvable.
+    pub fn delete_folder(&self, id: i64) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE records SET folder_id = NULL WHERE folder_id = ?1",
+                params![id],
+            )
+            .map_err(|e| e.to_string())?;
+        let n = self
+            .conn
+            .execute("DELETE FROM folders WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        if n == 0 {
+            return Err("dossier introuvable".to_string());
+        }
+        Ok(())
+    }
+
+    /// Rangement (F19) : déplace un enregistrement vers un dossier, ou vers
+    /// « Sans dossier » (`None`). Erreur si l'enregistrement ou le dossier
+    /// est introuvable.
+    pub fn move_record(&self, id: i64, folder_id: Option<i64>) -> Result<(), String> {
+        if let Some(f) = folder_id {
+            let c: i64 = self
+                .conn
+                .query_row(
+                    "SELECT COUNT(*) FROM folders WHERE id = ?1",
+                    params![f],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if c == 0 {
+                return Err("dossier introuvable".to_string());
+            }
+        }
+        let n = self
+            .conn
+            .execute(
+                "UPDATE records SET folder_id = ?1 WHERE id = ?2",
+                params![folder_id, id],
+            )
+            .map_err(|e| e.to_string())?;
+        if n == 0 {
+            return Err("enregistrement introuvable".to_string());
+        }
+        Ok(())
+    }
+
+    /// Enregistrements rangés dans un dossier (F19) — `None` = « Sans
+    /// dossier ». Plus récents en premier.
+    pub fn list_in_folder(
+        &self,
+        folder_id: Option<i64>,
+        limit: i64,
+    ) -> Result<Vec<HistoryRecord>, String> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
+                  FROM records
+                  WHERE folder_id IS ?2
+                  ORDER BY id DESC
+                  LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = st
+            .query_map(params![limit, folder_id], |r| row_to_record(r))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
     }
 
     // --- Contextes de prompt (F15) ---
@@ -362,7 +500,7 @@ impl Storage {
     }
 }
 
-/// Mappe une ligne `records` vers un `HistoryRecord` (ordre du SELECT, 11 colonnes).
+/// Mappe une ligne `records` vers un `HistoryRecord` (ordre du SELECT, 12 colonnes).
 fn row_to_record(r: &rusqlite::Row) -> rusqlite::Result<HistoryRecord> {
     // Colonne `created` en affinité TEXT : l'entier Unix y est stocké en
     // texte — on lit en `String` puis on reparsé (robuste aux deux stockages).
@@ -386,6 +524,7 @@ fn row_to_record(r: &rusqlite::Row) -> rusqlite::Result<HistoryRecord> {
         transcription: r.get(8)?,
         transcription_json: r.get(9)?,
         summary_markdown: r.get(10)?,
+        folder_id: r.get(11)?,
     })
 }
 
@@ -402,6 +541,21 @@ fn row_to_context(r: &rusqlite::Row) -> rusqlite::Result<PromptContext> {
         instructions: r.get(2)?,
         is_favorite: r.get::<_, i32>(3)? != 0,
         created,
+    })
+}
+
+/// Mappe une ligne `folders` vers un `Folder` (ordre du SELECT, 4 colonnes).
+fn row_to_folder(r: &rusqlite::Row) -> rusqlite::Result<Folder> {
+    // Idem `created` sur `records` : entier Unix stocké en texte.
+    let created: String = r.get(2)?;
+    let created: i64 = created
+        .parse()
+        .map_err(|_| rusqlite::Error::ToSqlConversionFailure("created".into()))?;
+    Ok(Folder {
+        id: r.get(0)?,
+        name: r.get(1)?,
+        created,
+        count: r.get(3)?,
     })
 }
 
@@ -557,6 +711,81 @@ mod tests {
         st.delete_context(b).expect("delete b");
         assert_eq!(st.list_contexts().expect("list2").len(), 1);
         st.delete_context(b).expect_err("double suppression");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// F19 : dossiers de rangement (création, rangement, sortie vers
+    /// « Sans dossier », comptes, suppression sans perte).
+    #[test]
+    fn roundtrip_folders() {
+        let dir = std::env::temp_dir().join("tldl-storage-folders-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let st = Storage::open(&dir).expect("ouverture");
+
+        let json = r#"{"text":"t","segments":[],"language":"fr"}"#;
+        let mk = |file: &str, ctx: &str, text: &str| {
+            st.save(
+                file,
+                now_epoch(),
+                10.0,
+                "small",
+                "gemma3-4b-q4",
+                "CPU",
+                ctx,
+                text,
+                json,
+                "",
+            )
+        };
+        let a = mk("a.wav", "Contexte par défaut", "premier texte").expect("save a");
+        let b = mk("b.mp4", "Contrôle qualité", "deuxième texte").expect("save b");
+
+        let f1 = st.create_folder("Comptes rendus").expect("create f1");
+        let f2 = st.create_folder("Clients").expect("create f2");
+
+        // Rangements + comptes des dossiers.
+        st.move_record(a, Some(f1)).expect("move a -> f1");
+        st.move_record(b, Some(f2)).expect("move b -> f2");
+        let folders = st.list_folders().expect("folders");
+        assert_eq!(folders.len(), 2);
+        assert_eq!(folders[0].id, f1);
+        assert_eq!(folders[0].count, 1);
+        assert_eq!(folders[1].id, f2);
+        assert_eq!(folders[1].count, 1);
+
+        // Contenus : « Sans dossier » vide, un par dossier.
+        assert!(st.list_in_folder(None, 50).expect("sans").is_empty());
+        let in_f1 = st.list_in_folder(Some(f1), 50).expect("f1");
+        assert_eq!(in_f1.len(), 1);
+        assert_eq!(in_f1[0].id, a);
+        assert_eq!(in_f1[0].folder_id, Some(f1));
+
+        // Sortie vers « Sans dossier » (un seul dossier par enregistrement).
+        st.move_record(a, None).expect("move a -> sans");
+        let unfiled = st.list_in_folder(None, 50).expect("sans 2");
+        assert_eq!(unfiled.len(), 1);
+        assert_eq!(unfiled[0].id, a);
+        assert!(unfiled[0].folder_id.is_none());
+
+        // Cas d'erreur : dossier inconnu, enregistrement inconnu.
+        st.move_record(b, Some(9_999_999)).expect_err("dossier introuvable");
+        st.move_record(9_999_999, None).expect_err("enregistrement introuvable");
+
+        // Suppression : les enregistrements du dossier repassent « Sans
+        // dossier » (jamais supprimés) ; double suppression = erreur.
+        st.delete_folder(f1).expect("delete f1");
+        assert_eq!(st.list_folders().expect("folders 2").len(), 1);
+        // a est déjà sorti (plus haut) ; b est toujours rangé dans f2.
+        assert_eq!(st.list_in_folder(None, 50).expect("sans 3").len(), 1);
+        assert_eq!(st.get(b).expect("b").folder_id, Some(f2));
+        st.delete_folder(f1).expect_err("double suppression");
+        // Dernier dossier : b repasse « Sans dossier » (jamais supprimé).
+        st.delete_folder(f2).expect("delete f2");
+        assert!(st.list_folders().expect("folders 3").is_empty());
+        assert_eq!(st.list_in_folder(None, 50).expect("sans 4").len(), 2);
+        assert!(st.get(a).expect("a").folder_id.is_none());
+        assert!(st.get(b).expect("b").folder_id.is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

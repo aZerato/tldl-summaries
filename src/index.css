@@ -700,3 +700,93 @@ audio {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+
+/* F19 : dossiers de rangement (panneau latéral + drag & drop). */
+
+/* La page Historique s'élargit pour le panneau + la liste. */
+.page.wide {
+  max-width: 1120px;
+}
+
+.folders-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 16px;
+}
+
+.folders-panel {
+  width: 250px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.folders-panel > h3 {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin: 0 0 10px;
+}
+
+.folders-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Item du panneau (cible de drop) : « Sans dossier » + un par dossier. */
+.folder-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.folder-item:hover {
+  background: var(--bg-soft);
+}
+
+.folder-item.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+/* Cible de drop (F19) : le dossier survolé pendant un glisser. */
+.folder-item.drop-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.folder-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ligne d'historique glissable (F19) : drag & drop vers un dossier. */
+.history-row.draggable {
+  cursor: grab;
+}
+
+.history-row.dragging {
+  opacity: 0.5;
+}
+
+/* Sélecteur de dossier par ligne (alternative au glisser-déposer). */
+.folder-pick {
+  max-width: 170px;
+  flex-shrink: 0;
+}
