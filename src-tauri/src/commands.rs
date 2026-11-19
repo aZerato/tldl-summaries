@@ -2,7 +2,7 @@
 
 use tauri::{AppHandle, Emitter, State};
 
-use crate::{config::Config, gpu, media, models, pipeline, storage, AppState};
+use crate::{asr, config::Config, gpu, media, models, pipeline, storage, AppState};
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +32,8 @@ pub async fn run_pipeline(
     context_id: Option<i64>,
 ) -> Result<pipeline::PipelineOutput, String> {
     // F15 : résolution du contexte (nom pour la consignation, instructions
-    // pour le prompt LLM) avant le pipeline.
+    // pour le prompt **LLM — le résumé**, jamais la transcription) avant le
+    // pipeline.
     let (context_instructions, context_name) = match context_id {
         Some(id) => {
             let c = state
@@ -122,6 +123,115 @@ pub async fn run_pipeline(
     }
 
     Ok(output)
+}
+
+/// Re-résumé d'un enregistrement **sans re-transcrire** (F15/F16) : la
+/// transcription stockée (`transcription_json`) est relue et seule l'étape
+/// LLM est relancée, avec le contexte choisi. Un **nouvel** enregistrement est
+/// consigné (même transcription, nouveau résumé) ; en cas d'erreur LLM,
+/// aucun n'est créé (l'ancien reste intact).
+///
+/// Le contexte n'agit que sur le résumé — jamais sur la transcription.
+#[tauri::command]
+pub async fn re_summarize(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    // Id du contexte de prompt (F15) ; `None` = contexte par défaut.
+    context_id: Option<i64>,
+) -> Result<storage::HistoryRecord, String> {
+    let rec = state
+        .storage
+        .lock()
+        .unwrap()
+        .get(id)
+        .map_err(|e| format!("historique : {e}"))?;
+    let transcription = transcription_from_record(&rec)?;
+    // F15 : contexte (nom pour la consignation, instructions pour le prompt
+    // LLM — le résumé, jamais la transcription).
+    let (context_instructions, context_name) = match context_id {
+        Some(cid) => {
+            let c = state
+                .storage
+                .lock()
+                .unwrap()
+                .get_context(cid)
+                .map_err(|e| format!("contexte : {e}"))?;
+            (c.instructions, c.name)
+        }
+        None => (String::new(), "Contexte par défaut".to_string()),
+    };
+    // Modèle/temperature/device : ceux de la config courante (F10 : bascule
+    // CPU si le GPU demandé est absent).
+    let (llm_model, temperature, use_gpu) = {
+        let c = state.config.lock().unwrap();
+        (c.llm_model.clone(), c.temperature, c.use_gpu)
+    };
+    let dev = gpu::resolve(use_gpu);
+    // Les valeurs consommées par la closure : la closure est `move` — on
+    // prélève ce qu'elle utilise, et on garde `dev.name` pour la consignation.
+    let n_gpu_layers = dev.n_gpu_layers;
+    let device_name = dev.name.clone();
+    let llm_model_run = llm_model.clone();
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        pipeline::re_summary(
+            &transcription,
+            &llm_model_run,
+            temperature,
+            &context_instructions,
+            n_gpu_layers,
+            &mut |p| {
+                let _ = app.emit(
+                    "pipeline-progress",
+                    &ProgressEvent {
+                        step: p.step.clone(),
+                        position: p.position,
+                        total: p.total,
+                    },
+                );
+            },
+        )
+    })
+    .await
+    .map_err(|_| "thread résumé interrompu".to_string())?;
+    let summary_markdown = res?;
+
+    // Consignation : la transcription (texte + JSON) est reportée à
+    // l'identique ; seul le résumé change.
+    let new_id = {
+        let st = state.storage.lock().unwrap();
+        st.save(
+            &rec.file,
+            storage::now_epoch(),
+            rec.duration_secs,
+            &rec.asr_model,
+            &llm_model,
+            &device_name,
+            &context_name,
+            &rec.transcription,
+            rec.transcription_json.as_deref().unwrap_or_default(),
+            &summary_markdown,
+        )
+        .map_err(|e| format!("historique : {e}"))?
+    };
+    let st = state.storage.lock().unwrap();
+    st.get(new_id).map_err(|e| format!("historique : {e}"))
+}
+
+/// Transcription d'un enregistrement, relue pour un re-résumé : le JSON
+/// stocké (texte + segments + langue) s'il est lisible, sinon le texte seul
+/// (lignes antérieures à la migration — mêmes replis que `toOutput` côté
+/// frontend).
+fn transcription_from_record(rec: &storage::HistoryRecord) -> Result<asr::Transcription, String> {
+    match &rec.transcription_json {
+        Some(j) => serde_json::from_str(j)
+            .map_err(|e| format!("transcription de l'enregistrement illisible : {e}")),
+        None => Ok(asr::Transcription {
+            text: rec.transcription.clone(),
+            segments: Vec::new(),
+            language: String::new(),
+        }),
+    }
 }
 
 /// Catalogue des modèles + état local.
@@ -314,4 +424,54 @@ pub fn set_config(
 ) -> Result<(), String> {
     *state.config.lock().unwrap() = config.clone();
     config.save()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::transcription_from_record;
+    use crate::storage::HistoryRecord;
+
+    fn rec(json: Option<&str>) -> HistoryRecord {
+        HistoryRecord {
+            id: 1,
+            file: "f.wav".into(),
+            created: 1_700_000_000,
+            duration_secs: 42.0,
+            asr_model: "small".into(),
+            llm_model: "qwen25-7b-q4".into(),
+            device: "CPU".into(),
+            context_name: String::new(),
+            transcription: "Texte intégral de la rencontre.".into(),
+            transcription_json: json.map(str::to_string),
+            summary_markdown: String::new(),
+        }
+    }
+
+    /// Ligne post-migration : le JSON est relisible — texte, segments et
+    /// langue reviennent tels quels (le re-résumé ne transcrit pas).
+    #[test]
+    fn record_json_roundtrips() {
+        let json = r#"{"text":"T1. T2.","segments":[{"start":0.0,"end":1.5,"text":"T1."}],"language":"fr"}"#;
+        let tr = transcription_from_record(&rec(Some(json))).expect("relecture");
+        assert_eq!(tr.text, "T1. T2.");
+        assert_eq!(tr.segments.len(), 1);
+        assert_eq!(tr.segments[0].end, 1.5);
+        assert_eq!(tr.language, "fr");
+    }
+
+    /// Ligne antérieure à la migration (pas de JSON) : repli sur le texte
+    /// seul — le re-résumé reste possible (le prompt ne lit que le texte).
+    #[test]
+    fn record_without_json_falls_back_to_text() {
+        let tr = transcription_from_record(&rec(None)).expect("replis texte seul");
+        assert_eq!(tr.text, "Texte intégral de la rencontre.");
+        assert!(tr.segments.is_empty());
+        assert_eq!(tr.language, "");
+    }
+
+    /// JSON illisible : erreur explicite (pas de repli silencieux).
+    #[test]
+    fn record_corrupt_json_is_an_error() {
+        assert!(transcription_from_record(&rec(Some("{pas du json"))).is_err());
+    }
 }

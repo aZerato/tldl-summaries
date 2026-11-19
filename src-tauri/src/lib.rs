@@ -29,6 +29,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::probe_media,
             commands::run_pipeline,
+            commands::re_summarize,
             commands::list_models,
             commands::download_model,
             commands::cancel_model_download,

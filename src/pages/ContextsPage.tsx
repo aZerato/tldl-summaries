@@ -102,9 +102,11 @@ export default function ContextsPage() {
     <div className="page">
       <h2>Contextes de prompt</h2>
       <p className="muted">
-        Chaque contexte oriente l'analyse et le résumé (F15) : il est injecté
-        dans le prompt LLM. À l'import, choisissez-le avant de lancer la
-        synthèse — les favoris (★) restent épinglés en tête de liste.
+        Chaque contexte oriente le <strong>résumé</strong> uniquement (F15) :
+        il est injecté dans le prompt LLM. La transcription (ASR) n'est
+        jamais modifiée — elle reste fidèle à l'audio. À l'import,
+        choisissez-le avant de lancer la synthèse — les favoris (★) restent
+        épinglés en tête de liste.
       </p>
 
       {error && (

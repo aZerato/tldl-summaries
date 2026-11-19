@@ -92,7 +92,8 @@ export interface HistoryRecord {
   summaryMarkdown: string;
 }
 
-/** Contexte de prompt (F15) — instructions d'analyse/résumé réutilisables. */
+/** Contexte de prompt (F15) — instructions de **résumé** réutilisables :
+ *  n'agit que sur l'étape LLM, jamais sur la transcription. */
 export interface PromptContext {
   id: number;
   name: string;

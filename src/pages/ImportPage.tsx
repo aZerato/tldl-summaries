@@ -7,8 +7,10 @@ import {
   historyForFile,
   listContexts,
   probeMedia,
+  reSummarize,
   runPipeline,
   saveContext,
+  toOutput,
 } from "../api/tauri";
 import Progress from "../components/Progress";
 import type {
@@ -189,6 +191,26 @@ export default function ImportPage({
     }
   }
 
+  // F15/F16 : re-résumé **sans re-transcrire** — la transcription stockée est
+  // réutilisée, seule l'étape LLM est relancée (avec le contexte choisi).
+  async function resume() {
+    if (!existing || existing.length === 0 || busy) return;
+    setBusy(true);
+    setError(null);
+    setProgress(null);
+    try {
+      const rec = await reSummarize(existing[0].id, contextId);
+      const fresh = await historyForFile(path ?? "");
+      setExisting(fresh.length > 0 ? fresh : null);
+      onDone(toOutput(rec));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }
+
   const selectedContext =
     contextId === null ? null : contexts.find((c) => c.id === contextId) ?? null;
 
@@ -236,21 +258,35 @@ export default function ImportPage({
           </div>
           {forced ? (
             <div className="muted">
-              Nouvelle analyse forcée — les résultats existants restent dans
-              l'historique.
+              Nouvelle analyse forcée — transcription + résumé recalculés ;
+              les résultats existants restent dans l'historique.
             </div>
           ) : (
-            <div className="row">
-              <button
-                className="btn primary"
-                onClick={() => onOpenExisting(existing[0])}
-              >
-                Ouvrir le résultat existant
-              </button>
-              <button className="btn" onClick={() => setForced(true)}>
-                Forcer une nouvelle analyse
-              </button>
-            </div>
+            <>
+              <div className="row" style={{ flexWrap: "wrap" }}>
+                <button
+                  className="btn primary"
+                  disabled={busy}
+                  onClick={resume}
+                >
+                  {busy ? "En cours…" : "Résumer à nouveau sans re-transcrire"}
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => onOpenExisting(existing[0])}
+                >
+                  Ouvrir le résultat existant
+                </button>
+                <button className="btn" onClick={() => setForced(true)}>
+                  Forcer une nouvelle analyse
+                </button>
+              </div>
+              <div className="muted" style={{ marginTop: 8 }}>
+                Le résumé seul est recalculé (LLM) avec le contexte choisi
+                ci-dessous ; la transcription stockée est réutilisée, pas de
+                re-transcription.
+              </div>
+            </>
           )}
         </div>
       )}
@@ -261,7 +297,7 @@ export default function ImportPage({
       <div className="file-card">
         <div className="row" style={{ marginTop: 0 }}>
           <label className="field" style={{ margin: 0, flex: 1 }}>
-            Contexte d'analyse / résumé
+            Contexte de résumé
             <select
               value={contextId === null ? -1 : contextId}
               onChange={(e) => {
@@ -299,7 +335,7 @@ export default function ImportPage({
                 rows={3}
                 value={newInstructions}
                 onChange={(e) => setNewInstructions(e.target.value)}
-                placeholder="Comment doit l'analyse orienter le résumé ?"
+                placeholder="Instructions pour le résumé — la transcription reste identique"
               />
             </label>
           </div>
@@ -327,6 +363,10 @@ export default function ImportPage({
             <button className="link" onClick={onGoContexts}>
               Gérer les contextes
             </button>
+            <div>
+              Le contexte n'agit que sur le **résumé** (LLM) — la
+              transcription reste fidèle à l'audio.
+            </div>
           </div>
         )}
       </div>
@@ -338,8 +378,9 @@ export default function ImportPage({
             !path ||
             busy ||
             info?.hasAudio === false ||
-            // F16 : un résultat existe — trancher d'abord (forcer ou
-            // rediriger), la synthèse ne se lance qu'une fois forcée.
+            // F16 : un résultat existe — trancher d'abord (re-résumer sans
+            // re-transcrire / rediriger / forcer) ; la synthèse complète
+            // (avec re-transcription) ne se lance qu'une fois forcée.
             (existing !== null && existing.length > 0 && !forced)
           }
           onClick={run}

@@ -110,6 +110,13 @@ Remarque : ASR et LLM ne s'exécutent **pas en même temps** → la RAM se
 dimensionne au **maximum** des deux, pas à leur somme
 (dimensionnement, cf. [models.md](models.md)).
 
+**Re-résumé sans re-transcription (F15/F16)** : si un fichier a déjà été
+analysé, seule l'étape **LLM** est relancée sur la transcription stockée
+(commande `re_summarize` → `pipeline::re_summary` — pas de sonde, pas de
+conversion, pas d'ASR) ; un nouvel enregistrement est consigné (même
+transcription, nouveau résumé). Le contexte de prompt (F15) s'applique au
+résumé, comme au pipeline complet.
+
 ### 5.1 Prompt LLM (à affiner — cf. F4)
 
 - Rôle : assistant de synthèse de rencontre.
@@ -184,8 +191,8 @@ Vérifié (cible GNU, Qwen2.5-1.5B Q4_K_M) : ASR small → transcription, puis
 
 - **Historique** : SQLite local (fichier, date, durée, modèles utilisés,
   textes transcription + résumé) — consignation **auto après chaque
-  pipeline réussi** (texte + segments horodatés en JSON), recherche plein
-  texte, réouverture du résultat (F7)
+  pipeline réussi et chaque re-résumé (F15/F16)** (texte + segments
+  horodatés en JSON), recherche plein texte, réouverture du résultat (F7)
 - **Contextes de prompt (F15)** : table `contexts` de la même base SQLite
   (nom, instructions, favori, horodatage) ; le nom du contexte utilisé est
   consigné dans `records` (`context_name`) ; migration idempotente à

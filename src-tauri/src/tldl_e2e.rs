@@ -32,6 +32,12 @@
 //! Fais passer `tldl_lib::gpu` (F10) : énumère les devices ggml (le CPU est
 //! toujours attendu ; le GPU seulement si la build a activé un backend —
 //! `TLDL_GPU`) et vérifie `resolve` (GPU demandé → bascule CPU si absent).
+//!   tldl-e2e resummarize
+//! Fais passer le **re-résumé sans re-transcription** (F15/F16) : enregistrement
+//! de référence (transcription JSON) → `pipeline::re_summary` (seule l'étape
+//! LLM) → nouvel enregistrement → `find_by_file` (dossier temporaire, jamais
+//! l'historique réel). `TLDL_E2E_LLM` = modèle (défaut `qwen25-7b-q4`) ;
+//! `TLDL_E2E_GPU=1` → offload GPU (`n_gpu_layers = -1`), sinon CPU.
 //!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
@@ -67,6 +73,11 @@ fn main() {
     // Mode F10 : détection des devices ggml (CPU + GPU si backend actif).
     if argv.first().is_some_and(|a| a.as_str() == "devices") {
         run_devices_e2e();
+        return;
+    }
+    // Mode F15/F16 : re-résumé sans re-transcription (dossier temporaire).
+    if argv.first().is_some_and(|a| a.as_str() == "resummarize") {
+        run_resummarize_e2e();
         return;
     }
 
@@ -550,4 +561,153 @@ fn run_devices_e2e() {
     }
     println!("resolve(use_gpu=true) : {} ({}, fallback={})", gpu_req.name, gpu_req.kind, gpu_req.fallback);
     println!("E2E devices OK");
+}
+
+/// E2E du re-résumé sans re-transcription F15/F16 (usage : `tldl-e2e resummarize`).
+///
+/// Va-et-retour factice dans un dossier temporaire (jamais l'historique réel
+/// de l'app) : enregistrement de référence (transcription JSON) → relecture
+/// `Transcription` → `pipeline::re_summary` (seule l'étape LLM est relancée,
+/// avec un contexte) → nouvel enregistrement (même transcription) →
+/// `find_by_file` (le nouveau précède l'ancien).
+///
+/// Le modèle LLM est **requis** (le re-résumé ne produit pas de repli) :
+/// absent → ignorée (exit 0), comme la sonde E2E sans input.
+fn run_resummarize_e2e() {
+    use tldl_lib::{asr, models, pipeline, storage};
+
+    let llm = env::var("TLDL_E2E_LLM")
+        .unwrap_or_else(|_| String::from("qwen25-7b-q4"))
+        .trim()
+        .to_string();
+    if !models::model_path(models::ModelKind::Llm, &llm).exists() {
+        println!("E2E resummarize ignorée : modèle LLM {llm} absent (TLDL_E2E_LLM)");
+        return;
+    }
+    let n_gpu_layers: i32 = if env::var("TLDL_E2E_GPU").unwrap_or_default() == "1" {
+        -1
+    } else {
+        0
+    };
+    let device = if n_gpu_layers < 0 { "GPU (E2E)" } else { "CPU" };
+
+    let dir = std::env::temp_dir().join("tldl-e2e-resummarize");
+    let _ = std::fs::remove_dir_all(&dir);
+    let st = match storage::Storage::open(&dir) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E resummarize : ouverture ({e})");
+            std::process::exit(1);
+        }
+    };
+
+    let text = "Un client entre dans une boulangerie et commande des viennoiseries \
+                pour six personnes. Il règle 25,50 euros et remercie le serveur.";
+    let json = format!(
+        r#"{{"text":"{}","segments":[{{"start":0.0,"end":8.0,"text":"{}"}}],"language":"fr"}}"#,
+        text, text
+    );
+    let file = "C:\\fake\\re.wav";
+    let id1 = match st.save(
+        file,
+        storage::now_epoch(),
+        42.0,
+        "small",
+        &llm,
+        device,
+        "Contexte par défaut",
+        text,
+        &json,
+        "## Synthèse\nRésumé de référence.",
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E resummarize : save ({e})");
+            std::process::exit(1);
+        }
+    };
+
+    // Relecture de la transcription stockée (le chemin exact du re-résumé).
+    let rec = match st.get(id1) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E resummarize : get ({e})");
+            std::process::exit(1);
+        }
+    };
+    let tr: asr::Transcription = match serde_json::from_str(rec.transcription_json.as_deref().unwrap_or("")) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E resummarize : relecture du JSON ({e})");
+            std::process::exit(1);
+        }
+    };
+
+    let ctx = "Résume en 3 phrases maximum, sans listes.";
+    let mut last_step = String::new();
+    let out = pipeline::re_summary(&tr, &llm, 0.3, &ctx, n_gpu_layers, &mut |p| {
+        if p.step != last_step {
+            last_step = p.step.clone();
+            println!("  [étape] {}", p.step);
+        }
+    });
+    let summary = match out {
+        Ok(md) => md,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E resummarize : {e}");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::process::exit(1);
+        }
+    };
+    if summary.trim().is_empty() {
+        eprintln!("ÉCHEC E2E resummarize : résumé vide");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+    println!("résumé produit :");
+    println!("{}", summary);
+
+    // Nouvel enregistrement : même transcription (reportée à l'identique),
+    // nouveau résumé + nouveau contexte.
+    let id2 = match st.save(
+        file,
+        storage::now_epoch(),
+        42.0,
+        "small",
+        &llm,
+        device,
+        "E2E re-résumé",
+        text,
+        &json,
+        &summary,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E resummarize : save du re-résumé ({e})");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::process::exit(1);
+        }
+    };
+    let rows = match st.find_by_file(file) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E resummarize : find_by_file ({e})");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::process::exit(1);
+        }
+    };
+    if rows.len() != 2
+        || rows[0].id != id2
+        || rows[1].id != id1
+        || rows[0].transcription != text
+        || rows[0].transcription_json.as_deref() != Some(json.as_str())
+        || rows[0].context_name != "E2E re-résumé"
+    {
+        eprintln!("ÉCHEC E2E resummarize : find_by_file inattendu ({rows:?})");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+    println!("E2E resummarize OK : re-résumé LLM seul, transcription réutilisée (jamais l'historique réel)");
 }

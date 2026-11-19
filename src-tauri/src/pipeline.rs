@@ -49,7 +49,9 @@ pub struct PipelineOptions {
     pub device: String,
     /// Note de bascule (F10) : `Some` si GPU demandé mais absent.
     pub device_note: Option<String>,
-    /// Contexte de prompt utilisateur (F15) ; vide = contexte « rencontre ».
+    /// Contexte de prompt utilisateur (F15) — n'agit que sur le **résumé
+    /// LLM** (la transcription reste fidèle à l'audio) ; vide = contexte
+    /// « rencontre ».
     pub context_instructions: String,
 }
 
@@ -172,6 +174,56 @@ fn run_inner(
         file: input.to_string(),
         duration_secs: info.duration_secs,
     })
+}
+
+/// Re-résumé sans re-transcription (F15/F16) : seule l'étape **LLM** est
+/// relancée, sur une transcription existante (réutilisée à l'identique —
+/// pas de sonde, pas de conversion, pas d'ASR).
+///
+/// `context_instructions` : contexte de prompt (F15) — n'agit que sur le
+/// résumé, jamais sur la transcription. `n_gpu_layers` : offload GPU (F10).
+/// `progress` : reçoit les étapes « llm » puis « done » (même protocole que
+/// `run` — la barre de progression de l'import s'en sert).
+pub fn re_summary(
+    transcription: &asr::Transcription,
+    llm_model: &str,
+    temperature: f32,
+    context_instructions: &str,
+    n_gpu_layers: i32,
+    progress: &mut dyn FnMut(&Progress),
+) -> Result<String, String> {
+    progress(&Progress {
+        step: "llm".into(),
+        position: 0.0,
+        total: 0.0,
+    });
+    // Le résumé est l'unique produit ici : une erreur LLM (modèle absent,
+    // chargement, crash) est renvoyée telle quelle — pas de repli possible
+    // (la transcription d'origine reste intacte dans l'historique).
+    let cfg = llm::LlmConfig {
+        model: llm_model.to_string(),
+        temperature,
+        max_tokens: 1024,
+    };
+    let r = llm::summarize(
+        transcription,
+        &cfg,
+        context_instructions,
+        n_gpu_layers,
+        &mut |pos, max| {
+            progress(&Progress {
+                step: "llm".into(),
+                position: pos as f64,
+                total: max as f64,
+            });
+        },
+    );
+    progress(&Progress {
+        step: "done".into(),
+        position: 1.0,
+        total: 1.0,
+    });
+    r
 }
 
 #[cfg(test)]

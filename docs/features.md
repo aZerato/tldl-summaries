@@ -159,15 +159,19 @@ Proposer de travailler soit sur le fichier complet ou sur des sections.
 L'utilisateur choisit ou crée un contexte de résumé avant de
 demander une transcription ; favoris pour la réutilisation rapide ; page
 dédicée à la création / gestion.
-- **Choix à l'import** : sélecteur « Contexte d'analyse / résumé »
-  (valeur par défaut = prompt « rencontre » de l'architecture §5.1) +
-  création rapide (nom + instructions) sans quitter la page
+- **Choix à l'import** : sélecteur « Contexte de résumé » (valeur par défaut
+  = prompt « rencontre » de l'architecture §5.1) + création rapide
+  (nom + instructions) sans quitter la page
 - **Page « Contextes »** : création, modification, suppression (confirmée),
   favoris ★ épinglés en tête de liste
 - **Injection** : le contexte **remplace le format par défaut** (Synthèse /
   Points clés / Décisions / Actions) dans le prompt LLM — cf.
   architecture.md §5.1 ; le binaire `tldl-llm` n'est pas modifié (il lit le
   prompt complet depuis son fichier)
+- **Portée** : le contexte n'agit que sur le **résumé** (étape LLM) — la
+  transcription (ASR) reste fidèle à l'audio ; affiché dans l'UI (sélecteur
+  « Contexte de résumé » à l'import + page Contextes) et rappelé dans le code
+  (commentaires `commands` / `pipeline` / `llm::build_prompt`)
 - **Traçabilité** : le nom du contexte est consigné dans l'historique
   (colonne `records.context_name`), affiché sur la ligne d'historique
 - **Stockage** : table SQLite `contexts` (même base que l'historique — F7)
@@ -176,18 +180,34 @@ dédicée à la création / gestion.
 
 ### F16 - Eviter la transcription d'un fichier ⏳
 Si un fichier a déjà été analysé, l'utilisateur est averti au choix du chemin :
-il peut forcer une nouvelle analyse, ou être redirigé vers le résultat existant
-(il peut malgré tout créer plusieurs transcriptions / résumés selon les contextes).
+il peut **re-résumer sans re-transcrire**, forcer une nouvelle analyse, ou
+être redirigé vers le résultat existant (plusieurs résumés peuvent coexister
+pour un même fichier — transcription unique, résumés selon les contextes).
 - **Commande** : `history_for_file` (Rust) → `storage::find_by_file`
   (`WHERE file=?1 ORDER BY id DESC`, le plus récent d'abord)
 - **Flux ImportPage** : au choix du chemin → `historyForFile` ; si trouvé →
-  carte d'avertissement « Ouvrir le résultat existant » (redirection
-  `toOutput`) / « Forcer une nouvelle analyse » (force) ; bouton « Lancer »
-  désactivé tant que l'utilisateur ne s'est pas prononcé
+  carte d'avertissement « **Résumer à nouveau sans re-transcrire** » (voir
+  ci-après) / « Ouvrir le résultat existant » (redirection `toOutput`) /
+  « Forcer une nouvelle analyse » (force : pipeline complet, re-transcription
+  incluse) ; bouton « Lancer la synthèse » désactivé tant que
+  l'utilisateur n'a pas tranché (forcer)
+- **Re-résumé sans re-transcrire** : la 3ᵉ option de la carte relance
+  **seule l'étape LLM** sur la transcription stockée — commande
+  `re_summarize` (Rust) : relit `records.transcription_json` de
+  l'enregistrement le plus récent (repli texte seul pour les lignes
+  pré-migration), `pipeline::re_summary` (pas de sonde, pas de conversion,
+  pas d'ASR) avec le **contexte sélectionné** à l'import, et consigne un
+  **nouvel** enregistrement (même transcription, nouveau résumé) ; en cas
+  d'erreur LLM, aucun enregistrement n'est créé (l'ancien reste intact).
+  Modèle/device : config courante (F10). UI : bouton « Résumer à nouveau
+  sans re-transcrire » + note (« le résumé seul est recalculé… ») ;
+  progression réutilisée (`pipeline-progress`, étapes `llm` → `done`)
 - **`toOutput` partagé** : `toOutput(r: HistoryRecord): PipelineOutput`
   déplacé dans `src/api/tauri.ts` (réutilisé par l'historique F7 + la
   redirection F16), inclut `file: r.file`
-- **Statut** : code en place (commande + test `find_by_file` + UI) ;
+- **Statut** : code en place (commande + test `find_by_file` + UI ;
+  re-résumé : `re_summarize` + `pipeline::re_summary` + test de relecture
+  `transcription_json` + E2E `tldl-e2e resummarize` — LLM réel, GPU) ;
   frontend vert ; à valider dans l'app
 
 ### F17 - Permettre d'avoir un mode avancée pour connecter des modèles via URL/IP

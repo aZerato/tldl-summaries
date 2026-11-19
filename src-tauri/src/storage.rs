@@ -13,7 +13,8 @@ use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::Path;
 
-/// Contexte de prompt (F15) : instructions d'analyse/résumé réutilisables.
+/// Contexte de prompt (F15) : instructions de **résumé** réutilisables —
+/// n'agit que sur l'étape LLM, jamais sur la transcription.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptContext {

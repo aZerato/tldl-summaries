@@ -60,6 +60,15 @@ export const searchHistory = (query: string) =>
 export const historyForFile = (file: string) =>
   invoke<HistoryRecord[]>("history_for_file", { file });
 
+/** Re-résumé d'un enregistrement **sans re-transcrire** (F15/F16) : seule
+ *  l'étape LLM est relancée (contexte choisi), la transcription stockée est
+ *  réutilisée. Renvoie le nouvel enregistrement consigné. */
+export const reSummarize = (id: number, contextId: number | null) =>
+  invoke<HistoryRecord>("re_summarize", {
+    id,
+    contextId: contextId === null ? null : contextId,
+  });
+
 /** Supprime un enregistrement de l'historique (F7). */
 export const deleteHistory = (id: number) =>
   invoke<null>("delete_history", { id });

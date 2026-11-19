@@ -5,14 +5,14 @@
 //!
 //! Audio d'entrée : WAV PCM s16 16 kHz mono, produit par `media::to_wav_16k`.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::os::raw::{c_char, c_int};
 use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Segment {
     /// Début du segment, en secondes
@@ -22,7 +22,9 @@ pub struct Segment {
     pub text: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+// `Deserialize` : la transcription est relue depuis `records.transcription_json`
+// pour un re-résumé sans re-transcription (F15/F16 — `commands::re_summarize`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Transcription {
     /// Texte intégral (segments concaténés)
