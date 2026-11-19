@@ -634,3 +634,36 @@ audio {
   background: var(--accent-soft);
   outline: 1px solid var(--accent);
 }
+
+/* F15/F16 : re-résumé depuis le résultat (LLM seul, contexte choisi). */
+.resum {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+}
+
+.resum .btn.primary {
+  margin-left: auto;
+}
+
+/* F15/F16 : résumés par contexte (page Résultat). */
+.summ-title {
+  margin: 24px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+}
+
+.history-row.current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}

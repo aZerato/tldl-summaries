@@ -10,7 +10,9 @@ import {
 import type { HistoryRecord, PipelineOutput } from "../types";
 
 interface Props {
-  onOpen: (result: PipelineOutput) => void;
+  /** F15/F16 : le résultat + l'enregistrement ouvert (re-résumé, résumés
+   *  par contexte). */
+  onOpen: (result: PipelineOutput, rec: HistoryRecord) => void;
 }
 
 function fmtDate(epoch: number): string {
@@ -68,7 +70,7 @@ export default function HistoryPage({ onOpen }: Props) {
     if (opening !== null) return;
     setOpening(r.id);
     getHistory(r.id)
-      .then((rec) => onOpen(toOutput(rec)))
+      .then((rec) => onOpen(toOutput(rec), rec))
       .catch((e) => setError(String(e)))
       .finally(() => setOpening(null));
   }

@@ -24,7 +24,10 @@ import type {
 
 interface Props {
   config: AppConfig | null;
-  onDone: (result: PipelineOutput) => void;
+  /** F15/F16 : le résultat + l'enregistrement consigné (re-résumé et
+   *  résumés par contexte depuis le résultat) ; `null` si la relance a
+   *  échoué. */
+  onDone: (result: PipelineOutput, rec: HistoryRecord | null) => void;
   onGoContexts: () => void;
   /** F16 : redirection vers un résultat existant du fichier choisi. */
   onOpenExisting: (rec: HistoryRecord) => void;
@@ -182,7 +185,18 @@ export default function ImportPage({
         config.language,
         contextId,
       );
-      onDone(r);
+      // F15/F16 : le pipeline vient de consigner un nouvel enregistrement —
+      // c'est le plus récent pour le fichier (historique trié, plus récents
+      // d'abord). `null` si la relance échoue : le re-résumé reste possible
+      // via l'historique.
+      let rec: HistoryRecord | null = null;
+      try {
+        const fresh = await historyForFile(path);
+        rec = fresh.length > 0 ? fresh[0] : null;
+      } catch {
+        rec = null;
+      }
+      onDone(r, rec);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -202,7 +216,7 @@ export default function ImportPage({
       const rec = await reSummarize(existing[0].id, contextId);
       const fresh = await historyForFile(path ?? "");
       setExisting(fresh.length > 0 ? fresh : null);
-      onDone(toOutput(rec));
+      onDone(toOutput(rec), rec);
     } catch (e) {
       setError(String(e));
     } finally {

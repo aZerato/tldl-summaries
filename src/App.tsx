@@ -5,13 +5,18 @@ import SettingsPage from "./pages/SettingsPage";
 import HistoryPage from "./pages/HistoryPage";
 import ContextsPage from "./pages/ContextsPage";
 import { getConfig, toOutput } from "./api/tauri";
-import type { AppConfig, PipelineOutput } from "./types";
+import type { AppConfig, PipelineOutput, ResultMeta } from "./types";
 
 type Page = "import" | "result" | "history" | "contexts" | "settings";
 
 export default function App() {
   const [page, setPage] = useState<Page>("import");
   const [result, setResult] = useState<PipelineOutput | null>(null);
+  // F15/F16 : id + métadonnées de l'enregistrement de l'historique affiché —
+  // re-résumé et résumés par contexte depuis le résultat (`null` = non
+  // traçable).
+  const [recordId, setRecordId] = useState<number | null>(null);
+  const [resultMeta, setResultMeta] = useState<ResultMeta | null>(null);
   const [config, setConfigState] = useState<AppConfig | null>(null);
 
   useEffect(() => {
@@ -63,26 +68,56 @@ export default function App() {
         {page === "import" && (
           <ImportPage
             config={config}
-            onDone={(r) => {
+            onDone={(r, rec) => {
               setResult(r);
+              setRecordId(rec ? rec.id : null);
+              setResultMeta(
+                rec
+                  ? { contextName: rec.contextName, created: rec.created }
+                  : null,
+              );
               setPage("result");
             }}
             onGoContexts={() => setPage("contexts")}
             // F16 : redirection vers un résultat existant du fichier.
             onOpenExisting={(rec) => {
               setResult(toOutput(rec));
+              setRecordId(rec.id);
+              setResultMeta({
+                contextName: rec.contextName,
+                created: rec.created,
+              });
               setPage("result");
             }}
           />
         )}
-        {page === "result" && result && <ResultPage result={result} />}
+        {page === "result" && result && (
+          <ResultPage
+            result={result}
+            recordId={recordId}
+            resultMeta={resultMeta}
+            onShown={(updated, rec) => {
+              setResult(updated);
+              setRecordId(rec.id);
+              setResultMeta({
+                contextName: rec.contextName,
+                created: rec.created,
+              });
+            }}
+          />
+        )}
         {page === "settings" && config && (
           <SettingsPage config={config} onChange={setConfigState} />
         )}
         {page === "history" && (
           <HistoryPage
-            onOpen={(r) => {
+            onOpen={(r, rec) => {
               setResult(r);
+              setRecordId(rec.id);
+              setResultMeta({
+                contextName: rec.contextName,
+                created: rec.created,
+              });
               setPage("result");
             }}
           />

@@ -172,8 +172,10 @@ dédicée à la création / gestion.
   transcription (ASR) reste fidèle à l'audio ; affiché dans l'UI (sélecteur
   « Contexte de résumé » à l'import + page Contextes) et rappelé dans le code
   (commentaires `commands` / `pipeline` / `llm::build_prompt`)
-- **Traçabilité** : le nom du contexte est consigné dans l'historique
-  (colonne `records.context_name`), affiché sur la ligne d'historique
+- **Traçabilité** : le nom du contexte est consigné dans l’historique
+  (colonne `records.context_name`), affiché sur la ligne d’historique,
+  dans la liste « Résumés de ce fichier » de la page Résultat et son pied
+  de page (contexte + date du résumé affiché)
 - **Stockage** : table SQLite `contexts` (même base que l'historique — F7)
 - **Statut** : code en place (storage + prompt + UI + E2E `tldl-e2e
   contexts`) ; à valider dans l'app
@@ -202,12 +204,28 @@ pour un même fichier — transcription unique, résumés selon les contextes).
   Modèle/device : config courante (F10). UI : bouton « Résumer à nouveau
   sans re-transcrire » + note (« le résumé seul est recalculé… ») ;
   progression réutilisée (`pipeline-progress`, étapes `llm` → `done`)
+- **Re-résumé depuis le résultat** : la page Résultat propose la même
+  action — sélecteur de contexte + bouton « Relancer le résumé » (LLM
+  seul) ; l’enregistrement ouvert y est identifié par son id (traçé dans
+  `App` : historique F7, redirection F16, synthèse — le plus récent du
+  fichier après `run_pipeline`), et le résultat affiché est remplacé par
+  le nouvel enregistrement (transcription et lecteur conservés)
+- **Résumés par contexte (page Résultat)** : tous les résumés d’un même
+  fichier sont conservés — chaque re-résumé en consigne un **nouvel**
+  enregistrement (`records.context_name` + horodatage) ; la page les liste
+  (« Résumés de ce fichier » : contexte, date, LLM, device — le résultat
+  affiché est repéré `current`, clic = l’ouvrir sans recalcul via
+  `get_history`) ; le pied de page indique le contexte + la date du résumé
+  affiché
 - **`toOutput` partagé** : `toOutput(r: HistoryRecord): PipelineOutput`
   déplacé dans `src/api/tauri.ts` (réutilisé par l'historique F7 + la
   redirection F16), inclut `file: r.file`
 - **Statut** : code en place (commande + test `find_by_file` + UI ;
   re-résumé : `re_summarize` + `pipeline::re_summary` + test de relecture
   `transcription_json` + E2E `tldl-e2e resummarize` — LLM réel, GPU) ;
+  re-résumé depuis le résultat : UI frontend (id traçé dans `App`, pas
+  de commande nouvelle) ; résumés par contexte : liste + pied de page
+  (commandes `get_history` / `history_for_file` existantes) ;
   frontend vert ; à valider dans l'app
 
 ### F17 - Permettre d'avoir un mode avancée pour connecter des modèles via URL/IP

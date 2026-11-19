@@ -1,13 +1,42 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SegmentList from "../components/SegmentList";
-import { convertFileSrc } from "../api/tauri";
-import type { PipelineOutput } from "../types";
+import {
+  convertFileSrc,
+  getHistory,
+  historyForFile,
+  listContexts,
+  reSummarize,
+  toOutput,
+} from "../api/tauri";
+import type {
+  HistoryRecord,
+  PipelineOutput,
+  PromptContext,
+  ResultMeta,
+} from "../types";
 
 interface Props {
   result: PipelineOutput;
+  /** F15/F16 : id de l'enregistrement ouvert — `null` = pas de re-résumé
+   *  possible depuis cette vue. */
+  recordId: number | null;
+  /** F15/F16 : contexte + date de l'enregistrement affiché. */
+  resultMeta: ResultMeta | null;
+  /** F15/F16 : le résultat affiché est remplacé par l'enregistrement donné
+   *  (re-résumé terminé ou choix d'un résumé existant). */
+  onShown: (updated: PipelineOutput, rec: HistoryRecord) => void;
 }
 
-export default function ResultPage({ result }: Props) {
+function fmtDate(epoch: number): string {
+  return new Date(epoch * 1000).toLocaleString();
+}
+
+export default function ResultPage({
+  result,
+  recordId,
+  resultMeta,
+  onShown,
+}: Props) {
   // Pas de résumé ? On ouvre directement la transcription.
   const [tab, setTab] = useState<"resume" | "transcription">(
     result.summaryMarkdown ? "resume" : "transcription"
@@ -20,6 +49,54 @@ export default function ResultPage({ result }: Props) {
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [mediaMissing, setMediaMissing] = useState(false);
+
+  // F15/F16 : re-résumé avec un autre contexte depuis le résultat — LLM
+  // seul, la transcription stockée est réutilisée (jamais re-transcrite).
+  const [contexts, setContexts] = useState<PromptContext[]>([]);
+  const [contextId, setContextId] = useState<number | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const [resumError, setResumError] = useState<string | null>(null);
+
+  // F15/F16 : résumés par contexte — tous les résumés du fichier sont
+  // conservés (chaque re-résumé en consigne un nouveau, contexte + date
+  // tracés) ; clic sur une ligne = ouvrir ce résumé sans recalcul.
+  const [summaries, setSummaries] = useState<HistoryRecord[] | null>(null);
+  const [opening, setOpening] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listContexts()
+      .then((c) => {
+        if (cancelled) return;
+        setContexts(c);
+        // Un contexte disparu (supprimé) ne doit pas rester sélectionné.
+        setContextId((id) =>
+          id === null || c.some((x) => x.id === id) ? id : null,
+        );
+      })
+      .catch((e) => {
+        if (!cancelled) setResumError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // La liste se rafraîchit quand l'enregistrement affiché change
+  // (re-résumé, ouverture d'un autre résumé du même fichier).
+  useEffect(() => {
+    let cancelled = false;
+    historyForFile(result.file)
+      .then((rows) => {
+        if (!cancelled) setSummaries(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) setResumError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [result.file, recordId]);
 
   const segments = result.transcription.segments;
   const activeIndex = playing
@@ -45,6 +122,33 @@ export default function ResultPage({ result }: Props) {
     } catch {
       // presse-papiers indisponible
     }
+  }
+
+  // F15/F16 : re-résumé — seule l'étape LLM est relancée (contexte choisi),
+  // sur la transcription stockée ; un nouvel enregistrement est consigné
+  // (l'ancien reste intact dans l'historique).
+  async function resume() {
+    if (recordId === null || resuming) return;
+    setResuming(true);
+    setResumError(null);
+    try {
+      const rec = await reSummarize(recordId, contextId);
+      onShown(toOutput(rec), rec);
+    } catch (e) {
+      setResumError(String(e));
+    } finally {
+      setResuming(false);
+    }
+  }
+
+  // Ouverture d'un résumé existant du même fichier — pas de recalcul.
+  async function openSummary(rec: HistoryRecord) {
+    if (rec.id === recordId || opening !== null) return;
+    setOpening(rec.id);
+    getHistory(rec.id)
+      .then((r) => onShown(toOutput(r), r))
+      .catch((e) => setResumError(String(e)))
+      .finally(() => setOpening(null));
   }
 
   return (
@@ -92,11 +196,51 @@ export default function ResultPage({ result }: Props) {
         />
       )}
 
+      {/* F15/F16 : re-résumé avec un autre contexte — LLM seul, la
+          transcription stockée est réutilisée, pas de re-transcription. */}
+      {recordId !== null && (
+        <div className="resum">
+          <span className="muted">
+            Relancer le résumé — LLM seul, transcription conservée
+            {resultMeta
+              ? ` · contexte actuel : ${
+                  resultMeta.contextName || "par défaut"
+                }`
+              : ""}
+          </span>
+          <select
+            value={contextId === null ? -1 : contextId}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setContextId(v < 0 ? null : v);
+            }}
+          >
+            <option value={-1}>Contexte par défaut (rencontre)</option>
+            {contexts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.isFavorite ? "★ " : ""}
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn primary"
+            disabled={resuming}
+            onClick={resume}
+          >
+            {resuming ? "Résumé en cours…" : "Relancer le résumé"}
+          </button>
+        </div>
+      )}
+      {resumError && <div className="error">{resumError}</div>}
+
       {tab === "resume" ? (
         result.summaryMarkdown ? (
           <pre className="markdown">{result.summaryMarkdown}</pre>
         ) : (
-          <p className="muted">{result.summaryError ?? "Résumé indisponible."}</p>
+          <p className="muted">
+            {result.summaryError ?? "Résumé indisponible."}
+          </p>
         )
       ) : (
         <SegmentList
@@ -106,6 +250,59 @@ export default function ResultPage({ result }: Props) {
         />
       )}
 
+      {/* F15/F16 : résumés par contexte — chaque re-résumé d'un même
+          fichier est conservé (contexte + horodatage tracés). */}
+      {summaries !== null && summaries.length > 0 && (
+        <>
+          <h3 className="summ-title">
+            Résumés de ce fichier ({summaries.length})
+          </h3>
+          <div className="history-list">
+            {summaries.map((r) => (
+              <div
+                key={r.id}
+                className={
+                  [
+                    "history-row",
+                    opening === r.id ? "opening" : "",
+                    r.id === recordId ? "current" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
+                }
+                role="button"
+                tabIndex={0}
+                onClick={() => openSummary(r)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") openSummary(r);
+                }}
+              >
+                <div className="row" style={{ marginTop: 0 }}>
+                  <span className="history-file">
+                    {r.contextName
+                      ? `« ${r.contextName} »`
+                      : "Contexte par défaut"}
+                  </span>
+                  {r.id === recordId && <span className="badge">affiché</span>}
+                  <span
+                    className="muted"
+                    style={{ marginLeft: "auto" }}
+                  >
+                    {fmtDate(r.created)} · LLM {r.llmModel}
+                    {r.device ? ` · ${r.device}` : ""}
+                  </span>
+                </div>
+                <span className="history-excerpt">
+                  {r.summaryMarkdown.length > 140
+                    ? r.summaryMarkdown.slice(0, 140) + "…"
+                    : r.summaryMarkdown}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       {result.deviceNote && (
         <div className="error" role="alert">
           {result.deviceNote}
@@ -113,6 +310,13 @@ export default function ResultPage({ result }: Props) {
       )}
 
       <div className="muted">
+        {resultMeta && (
+          <>
+            Résumé :{" "}
+            {resultMeta.contextName ? `« ${resultMeta.contextName} »` : "contexte par défaut"}
+            {" · "}{fmtDate(resultMeta.created)} ·{" "}
+          </>
+        )}
         ASR : {result.asrModel} · LLM : {result.llmModel} · Device :{" "}
         {result.device} · {Math.round(result.durationSecs)} s de média
       </div>

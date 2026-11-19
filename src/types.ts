@@ -94,6 +94,15 @@ export interface HistoryRecord {
 
 /** Contexte de prompt (F15) — instructions de **résumé** réutilisables :
  *  n'agit que sur l'étape LLM, jamais sur la transcription. */
+/** Vue frontend : métadonnées de l'enregistrement affiché (page Résultat) —
+ *  le retour Rust `PipelineOutput` n'en porte pas. */
+export interface ResultMeta {
+  /** Nom du contexte de prompt (F15) ; vide = lignes pré-migration. */
+  contextName: string;
+  /** Horodatage Unix (secondes). */
+  created: number;
+}
+
 export interface PromptContext {
   id: number;
   name: string;
