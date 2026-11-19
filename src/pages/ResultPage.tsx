@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { confirm } from "@tauri-apps/plugin-dialog";
+import Progress from "../components/Progress";
 import SegmentList from "../components/SegmentList";
 import {
   convertFileSrc,
+  deleteHistory,
   getHistory,
   historyForFile,
   listContexts,
@@ -12,6 +17,7 @@ import type {
   HistoryRecord,
   PipelineOutput,
   PromptContext,
+  Progress as ProgressEvent,
   ResultMeta,
 } from "../types";
 
@@ -23,8 +29,10 @@ interface Props {
   /** F15/F16 : contexte + date de l'enregistrement affiché. */
   resultMeta: ResultMeta | null;
   /** F15/F16 : le résultat affiché est remplacé par l'enregistrement donné
-   *  (re-résumé terminé ou choix d'un résumé existant). */
-  onShown: (updated: PipelineOutput, rec: HistoryRecord) => void;
+   *  (re-résumé terminé ou choix d'un résumé existant) ; `rec` `null` =
+   *  résultat en mémoire sans enregistrement consigné (re-résumé
+   *  impossible). */
+  onShown: (updated: PipelineOutput, rec: HistoryRecord | null) => void;
 }
 
 function fmtDate(epoch: number): string {
@@ -56,6 +64,10 @@ export default function ResultPage({
   const [contextId, setContextId] = useState<number | null>(null);
   const [resuming, setResuming] = useState(false);
   const [resumError, setResumError] = useState<string | null>(null);
+  // F15/F16 : barre d'avancement du re-résumé — `re_summarize` émet
+  // `pipeline-progress` (étapes `llm` → `done`), même contrat que le
+  // pipeline complet de l'import.
+  const [progress, setProgress] = useState<ProgressEvent | null>(null);
 
   // F15/F16 : résumés par contexte — tous les résumés du fichier sont
   // conservés (chaque re-résumé en consigne un nouveau, contexte + date
@@ -98,6 +110,24 @@ export default function ResultPage({
     };
   }, [result.file, recordId]);
 
+  // F15/F16 : la commande `re_summarize` émet `pipeline-progress`
+  // (étapes `llm` → `done`) — même contrat que le pipeline complet de
+  // l'import ; on l'affiche ici sous la barre de re-résumé.
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen<ProgressEvent>("pipeline-progress", (event) =>
+      setProgress(event.payload),
+    ).then((u) => {
+      if (!cancelled) unlisten = u;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   const segments = result.transcription.segments;
   const activeIndex = playing
     ? segments.findIndex((s) => s.start <= currentTime && currentTime < s.end)
@@ -131,6 +161,7 @@ export default function ResultPage({
     if (recordId === null || resuming) return;
     setResuming(true);
     setResumError(null);
+    setProgress(null);
     try {
       const rec = await reSummarize(recordId, contextId);
       onShown(toOutput(rec), rec);
@@ -138,6 +169,7 @@ export default function ResultPage({
       setResumError(String(e));
     } finally {
       setResuming(false);
+      setProgress(null);
     }
   }
 
@@ -149,6 +181,40 @@ export default function ResultPage({
       .then((r) => onShown(toOutput(r), r))
       .catch((e) => setResumError(String(e)))
       .finally(() => setOpening(null));
+  }
+
+  // F15/F16 : suppression d'une variante de résumé de ce fichier
+  // (confirmation native, comme l'historique F7). Si l'enregistrement
+  // supprimé est celui affiché : on ouvre le plus récent restant — ou
+  // l'on garde le résultat en mémoire s'il n'en reste aucun (re-résumé
+  // désactivé : plus d'enregistrement sous-jacent).
+  async function removeSummary(rec: HistoryRecord) {
+    if (resuming || opening !== null) return;
+    const ok = await confirm(
+      `Supprimer le résumé « ${rec.contextName || "contexte par défaut"} » ?`,
+      {
+        title: "Supprimer le résumé",
+        kind: "warning",
+        okLabel: "Supprimer",
+        cancelLabel: "Annuler",
+      },
+    );
+    if (!ok) return;
+    try {
+      await deleteHistory(rec.id);
+      const rows = await historyForFile(result.file);
+      setSummaries(rows);
+      if (rec.id === recordId) {
+        if (rows.length > 0) {
+          // `history_for_file` : plus récents d'abord (id DESC).
+          onShown(toOutput(rows[0]), rows[0]);
+        } else {
+          onShown(result, null);
+        }
+      }
+    } catch (e) {
+      setResumError(String(e));
+    }
   }
 
   return (
@@ -233,6 +299,7 @@ export default function ResultPage({
         </div>
       )}
       {resumError && <div className="error">{resumError}</div>}
+      {progress && <Progress progress={progress} />}
 
       {tab === "resume" ? (
         result.summaryMarkdown ? (
@@ -291,6 +358,16 @@ export default function ResultPage({
                     {fmtDate(r.created)} · LLM {r.llmModel}
                     {r.device ? ` · ${r.device}` : ""}
                   </span>
+                  <button
+                    className="btn danger"
+                    disabled={resuming}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeSummary(r);
+                    }}
+                  >
+                    Supprimer
+                  </button>
                 </div>
                 <span className="history-excerpt">
                   {r.summaryMarkdown.length > 140

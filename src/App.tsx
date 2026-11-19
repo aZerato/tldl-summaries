@@ -98,11 +98,12 @@ export default function App() {
             resultMeta={resultMeta}
             onShown={(updated, rec) => {
               setResult(updated);
-              setRecordId(rec.id);
-              setResultMeta({
-                contextName: rec.contextName,
-                created: rec.created,
-              });
+              setRecordId(rec ? rec.id : null);
+              setResultMeta(
+                rec
+                  ? { contextName: rec.contextName, created: rec.created }
+                  : null,
+              );
             }}
           />
         )}

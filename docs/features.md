@@ -83,10 +83,15 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 ### F7 — Historique local (SQLite) 📋
 Liste des traitements (fichier, date, durée, modèles utilisés), recherche
 plein texte, réouverture d'un résultat, suppression d'une entrée.
+**Groupé par fichier** (UI) : même transcription = un groupe par
+fichier, lignes = variantes de résumé (contexte + date — F15/F16).
 - **Statut** : code en place — consignation **auto après chaque pipeline
   réussi** (texte + segments horodatés en JSON, résumé) ; onglet
-  « Historique » : liste (fichier, date, durée, modèles, extrait),
-  recherche plein texte (fichier / transcription / résumé, debounce 300 ms),
+  « Historique » : liste **groupée par fichier** (un groupe par fichier —
+  même transcription ; lignes = variantes de résumé : contexte + date +
+  LLM + device, extrait du résumé, suppression par ligne),
+  recherche plein texte (fichier / transcription / résumé, debounce
+  300 ms, groupée aussi),
   réouverture en double-vue (F5), **suppression d'une entrée** (bouton
   « Supprimer » + confirmation native `@tauri-apps/plugin-dialog` —
   `window.confirm` n'est pas fiable sous le webview Tauri 2 ; commande
@@ -206,7 +211,9 @@ pour un même fichier — transcription unique, résumés selon les contextes).
   progression réutilisée (`pipeline-progress`, étapes `llm` → `done`)
 - **Re-résumé depuis le résultat** : la page Résultat propose la même
   action — sélecteur de contexte + bouton « Relancer le résumé » (LLM
-  seul) ; l’enregistrement ouvert y est identifié par son id (traçé dans
+  seul) + barre d’avancement réutilisée (`pipeline-progress`, étapes
+  `llm` → `done`, émise par `re_summarize`) ; l’enregistrement ouvert y
+  est identifié par son id (traçé dans
   `App` : historique F7, redirection F16, synthèse — le plus récent du
   fichier après `run_pipeline`), et le résultat affiché est remplacé par
   le nouvel enregistrement (transcription et lecteur conservés)
@@ -215,8 +222,11 @@ pour un même fichier — transcription unique, résumés selon les contextes).
   enregistrement (`records.context_name` + horodatage) ; la page les liste
   (« Résumés de ce fichier » : contexte, date, LLM, device — le résultat
   affiché est repéré `current`, clic = l’ouvrir sans recalcul via
-  `get_history`) ; le pied de page indique le contexte + la date du résumé
-  affiché
+  `get_history`), bouton « Supprimer » par ligne (confirmation native,
+  `delete_history` — si l’enregistrement supprimé est celui affiché : le
+  plus récent restant est ouvert, ou le résultat est gardé en mémoire sans
+  enregistrement si aucun ne reste) ; le pied de page indique le contexte +
+  la date du résumé affiché
 - **`toOutput` partagé** : `toOutput(r: HistoryRecord): PipelineOutput`
   déplacé dans `src/api/tauri.ts` (réutilisé par l'historique F7 + la
   redirection F16), inclut `file: r.file`

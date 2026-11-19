@@ -581,6 +581,39 @@ textarea::placeholder {
   word-break: break-all;
 }
 
+/* F7 : historique groupé par fichier — un groupe par fichier (même
+   transcription), lignes = variantes de résumé (contexte + date). */
+.history-group {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.history-group-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+.history-group > .history-row {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 8px 0 6px;
+}
+
+.history-group > .history-row + .history-row {
+  border-top: 1px solid var(--border);
+}
+
+.history-group > .history-row:hover {
+  background: var(--bg-soft);
+}
+
 /* F15 : formulaire de création/édition des contextes de prompt. */
 .context-form {
   background: var(--bg-card);

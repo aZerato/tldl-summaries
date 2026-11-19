@@ -15,6 +15,15 @@ interface Props {
   onOpen: (result: PipelineOutput, rec: HistoryRecord) => void;
 }
 
+/** F7/F15 : un groupe par fichier — la transcription est commune, les
+ *  lignes sont les variantes de résumé (contexte + date) ; clic = ouvrir. */
+interface FileGroup {
+  file: string;
+  baseName: string;
+  /** Enregistrements, plus récents en premier. */
+  rows: HistoryRecord[];
+}
+
 function fmtDate(epoch: number): string {
   return new Date(epoch * 1000).toLocaleString();
 }
@@ -27,6 +36,28 @@ function fmtDur(secs: number): string {
 
 function baseName(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+}
+
+// Les enregistrements arrivent plus récents d'abord (`list_history` /
+// `search_history` triés) ; les groupes sont ordonnés de même (le plus
+// récent d'abord).
+function groupByFile(rows: HistoryRecord[]): FileGroup[] {
+  const byFile = new Map<string, HistoryRecord[]>();
+  for (const r of rows) {
+    const arr = byFile.get(r.file);
+    if (arr) {
+      arr.push(r);
+    } else {
+      byFile.set(r.file, [r]);
+    }
+  }
+  return [...byFile.values()]
+    .map((rs) => ({
+      file: rs[0].file,
+      baseName: baseName(rs[0].file),
+      rows: rs,
+    }))
+    .sort((a, b) => b.rows[0].created - a.rows[0].created);
 }
 
 export default function HistoryPage({ onOpen }: Props) {
@@ -95,12 +126,17 @@ export default function HistoryPage({ onOpen }: Props) {
     }
   }
 
+  // `rows === null` = chargement ; sinon `groups` est toujours un tableau
+  // (vide si aucun enregistrement).
+  const groups = rows === null ? [] : groupByFile(rows);
+
   return (
     <div className="page">
       <h2>Historique</h2>
       <p className="muted">
-        Traitements conservés localement (SQLite). Clic sur une ligne pour
-        rouvrir le résultat (F7).
+        Traitements conservés localement (SQLite), groupés par fichier :
+        même transcription, une ligne par variante de résumé (contexte +
+        date — F15/F16). Clic sur une ligne pour rouvrir le résultat (F7).
       </p>
 
       <label className="field">
@@ -122,7 +158,7 @@ export default function HistoryPage({ onOpen }: Props) {
 
       {rows === null ? (
         <p className="muted">Chargement…</p>
-      ) : rows.length === 0 ? (
+      ) : groups.length === 0 ? (
         <p className="muted">
           {query.trim().length > 0
             ? "Aucun résultat."
@@ -130,42 +166,64 @@ export default function HistoryPage({ onOpen }: Props) {
         </p>
       ) : (
         <div className="history-list">
-          {rows.map((r) => (
-            <div
-              key={r.id}
-              className={
-                opening === r.id ? "history-row opening" : "history-row"
-              }
-              role="button"
-              tabIndex={0}
-              onClick={() => open(r)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") open(r);
-              }}
-            >
-              <span className="history-file">{baseName(r.file)}</span>
-              <div className="row" style={{ marginTop: 0 }}>
-                <span className="muted" style={{ flex: 1 }}>
-                  {fmtDate(r.created)} · {fmtDur(r.durationSecs)} · ASR{" "}
-                  {r.asrModel} · LLM {r.llmModel}
-                  {r.device ? ` · ${r.device}` : ""}
-                  {r.contextName ? ` · ${r.contextName}` : ""}
+          {groups.map((g) => (
+            <div className="history-group" key={g.file}>
+              <div className="history-group-head">
+                <span className="history-file" title={g.file}>
+                  {g.baseName}
                 </span>
-                <button
-                  className="btn danger"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    remove(r);
+                <span className="muted" style={{ marginLeft: "auto" }}>
+                  {g.rows.length}{" "}
+                  {g.rows.length > 1 ? "résumés" : "résumé"} ·{" "}
+                  {fmtDur(g.rows[0].durationSecs)} · ASR{" "}
+                  {g.rows[0].asrModel}
+                </span>
+              </div>
+              {g.rows.map((r) => (
+                <div
+                  key={r.id}
+                  className={
+                    opening === r.id
+                      ? "history-row opening"
+                      : "history-row"
+                  }
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => open(r)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") open(r);
                   }}
                 >
-                  Supprimer
-                </button>
-              </div>
-              <span className="history-excerpt">
-                {r.transcription.length > 140
-                  ? r.transcription.slice(0, 140) + "…"
-                  : r.transcription}
-              </span>
+                  <div className="row" style={{ marginTop: 0 }}>
+                    <span className="history-file">
+                      {r.contextName
+                        ? `« ${r.contextName} »`
+                        : "Contexte par défaut"}
+                    </span>
+                    <span
+                      className="muted"
+                      style={{ marginLeft: "auto" }}
+                    >
+                      {fmtDate(r.created)} · LLM {r.llmModel}
+                      {r.device ? ` · ${r.device}` : ""}
+                    </span>
+                    <button
+                      className="btn danger"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        remove(r);
+                      }}
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                  <span className="history-excerpt">
+                    {r.summaryMarkdown.length > 140
+                      ? r.summaryMarkdown.slice(0, 140) + "…"
+                      : r.summaryMarkdown || "Aucun résumé."}
+                  </span>
+                </div>
+              ))}
             </div>
           ))}
         </div>
