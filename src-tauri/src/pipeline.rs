@@ -30,6 +30,9 @@ pub struct PipelineOutput {
     pub device: String,
     /// Note de bascule (F10) : `Some` si GPU demandé mais absent.
     pub device_note: Option<String>,
+    /// Chemin du fichier source (F13) : lecture dans le lecteur de la page
+    /// résultat (protocole asset Tauri).
+    pub file: String,
     pub duration_secs: f64,
 }
 
@@ -166,6 +169,7 @@ fn run_inner(
         llm_model: opts.llm_model.clone(),
         device: opts.device.clone(),
         device_note: opts.device_note.clone(),
+        file: input.to_string(),
         duration_secs: info.duration_secs,
     })
 }
@@ -249,6 +253,7 @@ mod serde_tests {
             llm_model: "qwen25-1.5b-q4".into(),
             device: "CPU".into(),
             device_note: None,
+            file: "media.wav".into(),
             duration_secs: 42.0,
         };
         let v = serde_json::to_value(&out).unwrap();
@@ -258,6 +263,7 @@ mod serde_tests {
         assert_eq!(v["llmModel"], "qwen25-1.5b-q4");
         assert_eq!(v["device"], "CPU");
         assert_eq!(v["deviceNote"], serde_json::Value::Null);
+        assert_eq!(v["file"], "media.wav");
         assert_eq!(v["durationSecs"], 42.0);
         // Les champs snake_case ne doivent pas apparaître au fil.
         for k in [

@@ -177,6 +177,16 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib=stdc++");
     }
 
+    // F10 : le dossier `lib` du toolkit CUDA — les `#[link]` des import
+    // libs `cudart`/`cublas`/`cuda` (src/asr/mod.rs, src/tldl_llm_bin.rs)
+    // résolvent `cudart.lib`/`cublas.lib`/`cuda.lib` (Windows) ou
+    // `-lcudart`/`-lcublas`/`-lcuda` (Linux) dans ce dossier.
+    if gpu == Gpu::Cuda {
+        if let Some(dir) = cuda_lib_dir() {
+            println!("cargo:rustc-link-search=native={}", dir.display());
+        }
+    }
+
     // Chaîne LLM : shim → llama → ggml (llama.cpp) — liée par `#[link]` dans
     // `src/tldl_llm_bin.rs` (les archives `tldl_ggml*` renommées plus haut
     // sont posées *in situ* ; les `#[link]` du binaire `tldl-llm` les
@@ -208,16 +218,20 @@ fn build_llama(
     std::fs::create_dir_all(&wrapper)
         .map_err(|e| format!("création du wrapper CMake impossible : {e}"))?;
     let f = |p: &Path| p.to_string_lossy().replace('\\', "/");
+    // PAS de `CMAKE_C_STANDARD` ici : le `xxhash.c` du vendor/hash (compilé
+    // en C) basculerait alors en C11, et le garde de `xxhash.h` inclut
+    // `<stdalign.h>` — header C23 absent du SDK Windows < 10.0.22000. Sans
+    // flag `-std`, MSVC reste en C par défaut et le garde bascule sur
+    // `__declspec(align(n))`. Le ggml de llama.cpp pose lui-même
+    // `CMAKE_C_STANDARD 11` dans son propre scope (sa ggml/CMakeLists.txt).
     let mut cml = String::from(
         "cmake_minimum_required(VERSION 3.14)\n\
          project(tldl_llama_wrapper C CXX)\n\
-         set(CMAKE_C_STANDARD 11)\n\
          set(CMAKE_CXX_STANDARD 17)\n\
          set(CMAKE_CXX_STANDARD_REQUIRED ON)\n\
          set(BUILD_SHARED_LIBS OFF)\n\
          if (MSVC)\n\
              set(CMAKE_MSVC_RUNTIME_LIBRARY_FLAGS \"/MT\")\n\
-             add_compile_options(/utf-8 /bigobj)\n\
          endif()\n\
          ",
     );
@@ -257,11 +271,25 @@ fn build_llama(
         // OpenMP pour rester 100 % autonome (threadpool interne de ggml),
         // comme pour la build whisper.
         cfg("GGML_OPENMP", "OFF"),
+        // ccache (WinLibs) est sur le PATH : ggml le pose en RULE_LAUNCH_COMPILE,
+        // ce qui casse le scan de dépendances MSVC (ex. xxhash) et le parsing
+        // d'arguments nvcc. Coupé pour un build reproductible, sans cache.
+        cfg("GGML_CCACHE", "OFF"),
     ];
     match gpu {
         // F10 : le même gate que la build whisper (le binaire `tldl-llm`
         // embarque le backend GPU de SON ggml, renommé `tldl_ggml*`).
-        Gpu::Cuda => args.push(cfg("GGML_CUDA", "ON")),
+        Gpu::Cuda => {
+            args.push(cfg("GGML_CUDA", "ON"));
+            if let Some(a) = cuda_cudart_anchor()? {
+                args.push(a);
+            }
+            if *tc == Toolchain::Gnu {
+                let gpp = gnu_gpp().ok_or("TLDL_GPU=cuda : g++ du toolchain MinGW introuvable — requis comme compilateur hôte CUDA (CMAKE_CUDA_HOST_COMPILER).")?;
+                let gpp_path = gpp.to_string_lossy().into_owned();
+                args.push(cfg("CMAKE_CUDA_HOST_COMPILER", &gpp_path));
+            }
+        }
         Gpu::Metal => args.push(cfg("GGML_METAL", "ON")),
         Gpu::Vulkan => args.push(cfg("GGML_VULKAN", "ON")),
         Gpu::Cpu => {}
@@ -362,6 +390,52 @@ fn rename_ggml_archives(dir: &Path) -> Vec<String> {
     names
 }
 
+/// Dossier des import libs CUDA (`cudart.lib`/`cublas.lib`/`cuda.lib` sous
+/// `lib/x64` Windows, `libcudart.so`/`libcublas.so`/`libcuda.so` sous
+/// `lib64` Linux, `lib` macOS) — `rustc-link-search` pour les `#[link]`
+/// `cudart`/`cublas`/`cuda` des backends `ggml-cuda`/`tldl_ggml-cuda`.
+fn cuda_lib_dir() -> Option<std::path::PathBuf> {
+    let root = env::var_os("CUDA_PATH").or(env::var_os("CUDAToolkit_ROOT"))?;
+    let dir = if cfg!(target_os = "windows") {
+        Path::new(&root).join("lib/x64")
+    } else if cfg!(target_os = "macos") {
+        Path::new(&root).join("lib")
+    } else {
+        Path::new(&root).join("lib64")
+    };
+    if dir.exists() {
+        Some(dir)
+    } else {
+        None
+    }
+}
+
+/// Ancrage `CUDA_CUDART` pour `TLDL_GPU=cuda` sous Windows.
+///
+/// Avec le toolchain GNU (x86_64-pc-windows-gnu), `FindCUDAToolkit`
+/// (CMake ≥ 4) ne cherche pas `lib/x64` : l'architecture cible `X8664`
+/// n'est pas dans le jeu accepté par le module (`AMD64`/`x64`/`ARM64EC`),
+/// donc `cudart.lib` est « introuvable » et le toolkit déclaré absent —
+/// alors même que le toolkit est bien là. Pré-remplir `CUDA_CUDART`
+/// (variable de cache `-D`) court-circuite le `find_library`
+/// (comportement documenté : aucune recherche si la variable est déjà
+/// posée), et le module en dérive tout le reste (`CUDAToolkit_LIBRARY_DIR`,
+/// cibles `CUDA::*`). Hors Windows, pas d'ancrage : le module résout
+/// `lib64` tout seul.
+fn cuda_cudart_anchor() -> Result<Option<String>, String> {
+    if !cfg!(target_os = "windows") {
+        return Ok(None);
+    }
+    let root = env::var_os("CUDA_PATH")
+        .or(env::var_os("CUDAToolkit_ROOT"))
+        .ok_or("TLDL_GPU=cuda : CUDA_PATH (ou CUDAToolkit_ROOT) non défini — pointez-le sur le toolkit CUDA (ex. C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.5).")?;
+    let cudart = Path::new(&root).join("lib/x64/cudart.lib");
+    if !cudart.exists() {
+        return Err(format!("TLDL_GPU=cuda : {cudart:?} introuvable — installation CUDA incomplet ?"));
+    }
+    Ok(Some(format!("-DCUDA_CUDART={}", cudart.to_string_lossy().into_owned())))
+}
+
 /// Configure + build de whisper.cpp en lib statique. `gpu` : gate F10
 /// (option `GGML_*` du backend GPU sur le ggml de whisper.cpp).
 fn build_whisper(
@@ -392,10 +466,24 @@ fn build_whisper(
         cfg("WHISPER_BUILD_SERVER", "OFF"),
         // Pas de runtime OpenMP à bundler (le CPU backend a sa propre threadpool).
         cfg("GGML_OPENMP", "OFF"),
+        // ccache (WinLibs) est sur le PATH : ggml le pose en RULE_LAUNCH_COMPILE,
+        // ce qui casse le scan de dépendances MSVC (ex. xxhash) et le parsing
+        // d'arguments nvcc. Coupé pour un build reproductible, sans cache.
+        cfg("GGML_CCACHE", "OFF"),
     ];
     // F10 : backend GPU activé au build (jamais par défaut — C3).
     match gpu {
-        Gpu::Cuda => args.push(cfg("GGML_CUDA", "ON")),
+        Gpu::Cuda => {
+            args.push(cfg("GGML_CUDA", "ON"));
+            if let Some(a) = cuda_cudart_anchor()? {
+                args.push(a);
+            }
+            if *tc == Toolchain::Gnu {
+                let gpp = gnu_gpp().ok_or("TLDL_GPU=cuda : g++ du toolchain MinGW introuvable — requis comme compilateur hôte CUDA (CMAKE_CUDA_HOST_COMPILER).")?;
+                let gpp_path = gpp.to_string_lossy().into_owned();
+                args.push(cfg("CMAKE_CUDA_HOST_COMPILER", &gpp_path));
+            }
+        }
         Gpu::Metal => args.push(cfg("GGML_METAL", "ON")),
         Gpu::Vulkan => args.push(cfg("GGML_VULKAN", "ON")),
         Gpu::Cpu => {}
@@ -512,6 +600,26 @@ fn gnu_gcc() -> Option<std::path::PathBuf> {
         "gcc",
         "x86_64-w64-mingw32-gcc",
         gcc_exe.as_str(),
+    ];
+    for n in names {
+        let p = d.join(format!("{}{}", n, std::env::consts::EXE_SUFFIX));
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Compilateur C++ (g++) du toolchain MinGW, s'il existe.
+/// `nvcc` ne connaît pas le toolchain GNU : sans `CMAKE_CUDA_HOST_COMPILER`,
+/// il cherche `cl.exe` (MSVC) et l'identification CUDA échoue.
+fn gnu_gpp() -> Option<std::path::PathBuf> {
+    let d = gnu_dir()?;
+    let gpp_exe = format!("g++{}", std::env::consts::EXE_SUFFIX);
+    let names = [
+        "g++",
+        "x86_64-w64-mingw32-g++",
+        gpp_exe.as_str(),
     ];
     for n in names {
         let p = d.join(format!("{}{}", n, std::env::consts::EXE_SUFFIX));

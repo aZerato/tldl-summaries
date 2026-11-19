@@ -46,7 +46,11 @@ tauri-build = { version = "2", features = [] }
 cc = "1"
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `protocol-asset` (F13) : le lecteur audio de la page résultat sert le
+# fichier source via l'URI `asset://` — la feature doit être active quand
+# `app.security.assetProtocol.enable` est `true` dans tauri.conf.json
+# (tauri-build vérifie la cohérence config ↔ features).
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

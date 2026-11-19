@@ -36,6 +36,8 @@ export interface PipelineOutput {
   device: string;
   /** Note de bascule (F10) : GPU demandé mais non détecté (exécution CPU). */
   deviceNote: string | null;
+  /** Chemin du fichier source (F13) — lecteur audio de la page résultat. */
+  file: string;
   durationSecs: number;
 }
 

@@ -118,6 +118,7 @@ mod ffi {
     use std::os::raw::{c_char, c_int, c_void};
 
     /// Opaque : moteur llama.cpp (modèle + contexte + vocabulaire).
+    #[repr(transparent)]
     pub struct TldlLlama;
 
     extern "C" {

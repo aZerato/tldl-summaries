@@ -4,7 +4,7 @@ import ResultPage from "./pages/ResultPage";
 import SettingsPage from "./pages/SettingsPage";
 import HistoryPage from "./pages/HistoryPage";
 import ContextsPage from "./pages/ContextsPage";
-import { getConfig } from "./api/tauri";
+import { getConfig, toOutput } from "./api/tauri";
 import type { AppConfig, PipelineOutput } from "./types";
 
 type Page = "import" | "result" | "history" | "contexts" | "settings";
@@ -68,6 +68,11 @@ export default function App() {
               setPage("result");
             }}
             onGoContexts={() => setPage("contexts")}
+            // F16 : redirection vers un résultat existant du fichier.
+            onOpenExisting={(rec) => {
+              setResult(toOutput(rec));
+              setPage("result");
+            }}
           />
         )}
         {page === "result" && result && <ResultPage result={result} />}

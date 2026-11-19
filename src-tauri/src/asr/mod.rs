@@ -45,6 +45,7 @@ mod ffi {
     use std::os::raw::{c_char, c_int};
 
     /// Poignée opaque (côté shim C).
+    #[repr(transparent)]
     pub struct TldlWhisper;
 
     // Lien par `#[link]` (et non `build.rs`) : les directives du build script
@@ -92,16 +93,31 @@ use ffi::TldlWhisper;
 // F10 : archives des backends GPU (whisper.cpp), liées seulement si la
 // build les a compilées (variable `TLDL_GPU` — cf. build.rs). Le registre
 // du `ggml` ci-contre les référence (`GGML_USE_*`) : l'archive doit suivre
-// `ggml`/`ggml-base` dans l'ordre de lien, d'où ces modules *après* `ffi`.
+// `ggml`/`ggml-base` dans l'ordre de lien, d'où *après* `ffi`. Un `#[link]`
+// posé sur un *module* est ignoré par rustc (warning `unused_attributes`)
+// — il ne s'applique qu'aux blocs `extern`, d'où les blocs vides ici.
 #[cfg(tldl_gpu_cuda)]
 #[link(name = "ggml-cuda", kind = "static")]
-mod _ggml_backend_cuda {}
+extern "C" {}
+// Import libs CUDA (cudart / cublas / pilote `cuda`) : référencés par les
+// objets de `ggml-cuda`. Le dossier `lib` du toolkit est posé par build.rs
+// (`rustc-link-search`) ; sur GNU, `-lcudart`/`-lcublas`/`-lcuda` trouvent
+// les `libcudart.so`/`libcublas.so`/`libcuda.so` du même dossier.
+#[cfg(tldl_gpu_cuda)]
+#[link(name = "cudart", kind = "static")]
+extern "C" {}
+#[cfg(tldl_gpu_cuda)]
+#[link(name = "cublas", kind = "static")]
+extern "C" {}
+#[cfg(tldl_gpu_cuda)]
+#[link(name = "cuda", kind = "static")]
+extern "C" {}
 #[cfg(tldl_gpu_vulkan)]
 #[link(name = "ggml-vulkan", kind = "static")]
-mod _ggml_backend_vulkan {}
+extern "C" {}
 #[cfg(tldl_gpu_metal)]
 #[link(name = "ggml-metal", kind = "static")]
-mod _ggml_backend_metal {}
+extern "C" {}
 
 /// Moteur whisper (poignée RAII ; le C++ est libéré au drop).
 struct Engine {

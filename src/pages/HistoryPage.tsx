@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { getHistory, listHistory, searchHistory } from "../api/tauri";
-import type {
-  HistoryRecord,
-  PipelineOutput,
-  Transcription,
-} from "../types";
+import {
+  getHistory,
+  listHistory,
+  searchHistory,
+  toOutput,
+} from "../api/tauri";
+import type { HistoryRecord, PipelineOutput } from "../types";
 
 interface Props {
   onOpen: (result: PipelineOutput) => void;
@@ -22,31 +23,6 @@ function fmtDur(secs: number): string {
 
 function baseName(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-}
-
-/** Reconstruit le résultat affiché à partir d'un enregistrement (F7). */
-function toOutput(r: HistoryRecord): PipelineOutput {
-  let transcription: Transcription;
-  if (r.transcriptionJson) {
-    try {
-      transcription = JSON.parse(r.transcriptionJson) as Transcription;
-    } catch {
-      transcription = { text: r.transcription, segments: [], language: "" };
-    }
-  } else {
-    // Ligne écrite avant la migration : texte seul, pas de segments.
-    transcription = { text: r.transcription, segments: [], language: "" };
-  }
-  return {
-    transcription,
-    summaryMarkdown: r.summaryMarkdown,
-    summaryError: null,
-    asrModel: r.asrModel,
-    llmModel: r.llmModel,
-    device: r.device,
-    deviceNote: null,
-    durationSecs: r.durationSecs,
-  };
 }
 
 export default function HistoryPage({ onOpen }: Props) {

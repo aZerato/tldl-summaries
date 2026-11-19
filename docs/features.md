@@ -105,7 +105,9 @@ bascule CPU si absent (C3 « GPU optionnel, CPU viable »).
   `vulkan`) pilote dans `build.rs` les options CMake `GGML_CUDA` /
   `GGML_METAL` / `GGML_VULKAN` des **deux** ggml (whisper.cpp et
   llama.cpp) et les cfg `tldl_gpu_*` qui conditionnent les `#[link]` des
-  archives GPU (app/E2E : `ggml-cuda`… ; `tldl-llm` : `tldl_ggml-cuda`…)
+  archives GPU (app/E2E : `ggml-cuda`… ; `tldl-llm` : `tldl_ggml-cuda`…).
+  Sous Windows, `cuda` exige en plus la cible **MSVC** et `CUDA_PATH`
+  (nvcc : hôte MSVC uniquement — cf. architecture.md §10.1).
 - **Détection** : `src/gpu.rs` interroge le registre de devices du ggml de
   whisper.cpp (lié dans l'app) — le device CPU est toujours présent, un
   GPU/iGPU n'apparaît que si la build a activé le backend et que la
@@ -120,15 +122,32 @@ bascule CPU si absent (C3 « GPU optionnel, CPU viable »).
   est affiché sur le résultat et consigné dans l'historique (colonne
   `records.device`, migration idempotente)
 - **Statut** : code en place (build.rs + `gpu.rs` + `n_gpu_layers` LLM +
-  UI + E2E `tldl-e2e devices` : CPU détecté, `resolve(true)` bascule CPU —
-  attendu sur build CPU) ; à valider dans l'app
+  UI + E2E `tldl-e2e devices`) ; **runtime validé sur la machine** (RTX
+  4070 Ti SUPER, compute 8.9, 16 Go — build CUDA) : `tldl-e2e devices` →
+  GPU détecté (`CUDA0`), `resolve(true)` → GPU sans bascule CPU ;
+  `tldl-llm` avec `n_gpu_layers = -1` → 29/29 couches offloadées sur le
+  GPU (modèle 4,1 Go + KV + compute sur `CUDA0`, génération CUDA Graph) ;
+  reste la validation dans l'app (Réglages → « Accélération » : la 4070
+  est listée, toggle ON → pipeline sur le GPU, device affiché sur le
+  résultat et consigné `records.device`)
 
 ### F12 — Benchmark & cibles perf 📋
 Matrice modèle × device × durée (5 / 10 / 30 min) ; les résultats mesurés
 alimentent models.md (remplacent les estimations).
 
-### F13 — Lecteur audio intégré 💡
-Player synchronisé aux segments (clic = saut, reprise du segment).
+### F13 — Lecteur audio intégré ⏳
+Lecteur audio intégré à la page Résultat, synchronisé aux segments.
+- **Lecture de la source** : le lecteur lit le fichier *source* (l'intermédiaire
+  WAV est supprimé après le pipeline) via le **asset protocol** Tauri —
+  `convertFileSrc` → `asset://`, `app.security.assetProtocol {enable:true,
+  scope:["**"]}` dans `tauri.conf.json`, feature `protocol-asset` (Cargo.toml)
+- **Champ `file`** : `PipelineOutput.file: String` (serde camelCase) porte le
+  chemin du fichier source, posé par `pipeline.rs` (`file: input.to_string()`)
+- **Sync segments** : `ResultPage.tsx` — `<audio controls>` +
+  `onTimeUpdate` → `activeIndex` ; clic sur un segment = `seekTo` + play
+- **SegmentList** : segments cliquables + surlignage du segment actif
+- **Statut** : code en place (Rust `file` + asset-protocol + player/sync
+  frontend) ; frontend `tsc`+`vite` vert ; à valider dans l'app
 
 ### F14 - Travail par section 🔎
 Proposer de travailler soit sur le fichier complet ou sur des sections.
@@ -151,8 +170,21 @@ dédicée à la création / gestion.
 - **Statut** : code en place (storage + prompt + UI + E2E `tldl-e2e
   contexts`) ; à valider dans l'app
 
-### F16 - Eviter la transcription d'un fichier
-Si un fichier à déjà été analysé il faudrait que l'utilisateur soit averti. Veut-il forcer une nouvelle analyse ? Si oui, alors il continue, sinon il est redirigé vers la transcription correspondante. Il peut toutefois, créer plusieurs transcription / résumés selon les contextes de prompt.
+### F16 - Eviter la transcription d'un fichier ⏳
+Si un fichier a déjà été analysé, l'utilisateur est averti au choix du chemin :
+il peut forcer une nouvelle analyse, ou être redirigé vers le résultat existant
+(il peut malgré tout créer plusieurs transcriptions / résumés selon les contextes).
+- **Commande** : `history_for_file` (Rust) → `storage::find_by_file`
+  (`WHERE file=?1 ORDER BY id DESC`, le plus récent d'abord)
+- **Flux ImportPage** : au choix du chemin → `historyForFile` ; si trouvé →
+  carte d'avertissement « Ouvrir le résultat existant » (redirection
+  `toOutput`) / « Forcer une nouvelle analyse » (force) ; bouton « Lancer »
+  désactivé tant que l'utilisateur ne s'est pas prononcé
+- **`toOutput` partagé** : `toOutput(r: HistoryRecord): PipelineOutput`
+  déplacé dans `src/api/tauri.ts` (réutilisé par l'historique F7 + la
+  redirection F16), inclut `file: r.file`
+- **Statut** : code en place (commande + test `find_by_file` + UI) ;
+  frontend vert ; à valider dans l'app
 
 ### F17 - Permettre d'avoir un mode avancée pour connecter des modèles via URL/IP
 Permettre à l'utilisateur de pointer sur un provider local ou web IA (mais à ses risques).

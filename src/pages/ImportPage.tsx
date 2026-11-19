@@ -4,6 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
+  historyForFile,
   listContexts,
   probeMedia,
   runPipeline,
@@ -12,6 +13,7 @@ import {
 import Progress from "../components/Progress";
 import type {
   AppConfig,
+  HistoryRecord,
   MediaInfo,
   PipelineOutput,
   Progress as ProgressEvent,
@@ -22,9 +24,16 @@ interface Props {
   config: AppConfig | null;
   onDone: (result: PipelineOutput) => void;
   onGoContexts: () => void;
+  /** F16 : redirection vers un résultat existant du fichier choisi. */
+  onOpenExisting: (rec: HistoryRecord) => void;
 }
 
-export default function ImportPage({ config, onDone, onGoContexts }: Props) {
+export default function ImportPage({
+  config,
+  onDone,
+  onGoContexts,
+  onOpenExisting,
+}: Props) {
   const [path, setPath] = useState<string | null>(null);
   const [info, setInfo] = useState<MediaInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -38,6 +47,10 @@ export default function ImportPage({ config, onDone, onGoContexts }: Props) {
   const [newName, setNewName] = useState("");
   const [newInstructions, setNewInstructions] = useState("");
   const [creatingBusy, setCreatingBusy] = useState(false);
+  // F16 : résultats existants du fichier choisi (null = aucun/ inconnus).
+  const [existing, setExisting] = useState<HistoryRecord[] | null>(null);
+  // F16 : l'utilisateur a choisi de forcer une nouvelle analyse.
+  const [forced, setForced] = useState(false);
 
   async function loadContexts() {
     try {
@@ -104,9 +117,14 @@ export default function ImportPage({ config, onDone, onGoContexts }: Props) {
     setPath(p);
     setInfo(null);
     setError(null);
+    // F16 : l'état « forcée » ne vaut que pour le dernier fichier choisi.
+    setExisting(null);
+    setForced(false);
     try {
       const i = await probeMedia(p);
       setInfo(i);
+      const prev = await historyForFile(p);
+      setExisting(prev.length > 0 ? prev : null);
     } catch (e) {
       setError(String(e));
     }
@@ -203,6 +221,40 @@ export default function ImportPage({ config, onDone, onGoContexts }: Props) {
         </div>
       )}
 
+      {/* F16 : fichier déjà analysé — avertir, forcer ou rediriger. */}
+      {existing !== null && existing.length > 0 && (
+        <div className="file-card">
+          <div className="file-name">
+            Ce fichier a déjà été analysé
+            {existing.length > 1 ? ` (${existing.length} résultats)` : ""}
+          </div>
+          <div className="muted">
+            Plus récent :{" "}
+            {new Date(existing[0].created * 1000).toLocaleString()} · ASR{" "}
+            {existing[0].asrModel} · LLM {existing[0].llmModel}
+            {existing[0].contextName ? ` · ${existing[0].contextName}` : ""}
+          </div>
+          {forced ? (
+            <div className="muted">
+              Nouvelle analyse forcée — les résultats existants restent dans
+              l'historique.
+            </div>
+          ) : (
+            <div className="row">
+              <button
+                className="btn primary"
+                onClick={() => onOpenExisting(existing[0])}
+              >
+                Ouvrir le résultat existant
+              </button>
+              <button className="btn" onClick={() => setForced(true)}>
+                Forcer une nouvelle analyse
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {progress && <Progress progress={progress} />}
 
       {/* F15 : choix du contexte de prompt avant la synthèse. */}
@@ -282,7 +334,14 @@ export default function ImportPage({ config, onDone, onGoContexts }: Props) {
       <div className="row">
         <button
           className="btn primary"
-          disabled={!path || busy || info?.hasAudio === false}
+          disabled={
+            !path ||
+            busy ||
+            info?.hasAudio === false ||
+            // F16 : un résultat existe — trancher d'abord (forcer ou
+            // rediriger), la synthèse ne se lance qu'une fois forcée.
+            (existing !== null && existing.length > 0 && !forced)
+          }
           onClick={run}
         >
           {busy ? "Synthèse en cours…" : "Lancer la synthèse"}

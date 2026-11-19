@@ -213,6 +213,15 @@ pub fn search_history(
     state.storage.lock().unwrap().search(&query)
 }
 
+/// Résultats déjà produits pour un fichier (F16) — plus récents en premier.
+#[tauri::command]
+pub fn history_for_file(
+    state: State<'_, AppState>,
+    file: String,
+) -> Result<Vec<storage::HistoryRecord>, String> {
+    state.storage.lock().unwrap().find_by_file(&file)
+}
+
 /// Contextes de prompt (F15) — favoris d'abord.
 #[tauri::command]
 pub fn list_contexts(

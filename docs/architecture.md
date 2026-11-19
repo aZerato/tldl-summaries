@@ -179,6 +179,10 @@ Vérifié (cible GNU, Qwen2.5-1.5B Q4_K_M) : ASR small → transcription, puis
 - **Fichiers source non copiés** : l'app ne travaille que sur la piste audio
   extraite ; le média original reste chez l'utilisateur
 - **Temporaires** : WAV intermédiaire systématiquement effacé
+- **Lecteur audio (F13)** : lit le fichier **source** (l'intermédiaire WAV
+  étant effacé) via le **asset protocol** Tauri (`asset://`,
+  `app.security.assetProtocol` + feature `protocol-asset`) ; dépend du média
+  original qui reste chez l'utilisateur (non copié, voir ci-dessus)
 - **Seule exception réseau** : téléchargement des modèles (opt-in, traçable
   dans les logs locaux)
 
@@ -246,7 +250,14 @@ Détails d'intégration (F3, ADR-002) :
   `tldl_gpu_*` des `#[link]` des archives GPU (app/E2E : `ggml-cuda`… ;
   `tldl-llm` : `tldl_ggml-cuda`…). À l'exécution, `src/gpu.rs` détecte les
   devices ggml et bascule CPU si le GPU demandé est absent
-  (`gpu::resolve`, note affichée).
+   (`gpu::resolve`, note affichée). Sous Windows + toolchain GNU,
+   `TLDL_GPU=cuda` exige `CUDA_PATH` (ou `CUDAToolkit_ROOT`) pointant le
+   toolkit CUDA, et `build.rs` cale deux choses que CMake/nvcc ne
+   résolvent pas tout seuls sous MinGW : `CUDA_CUDART` (le
+   `FindCUDAToolkit` de CMake ≥ 4 ne cherche pas `lib/x64` pour
+   l'architecture cible GNU `X8664` — la variable de cache court-circuite
+   la recherche de `cudart.lib`) et `CMAKE_CUDA_HOST_COMPILER` (g++ du
+   toolchain — sans lui `nvcc` cherche `cl.exe`).
 - `rusqlite` est épinglé à **0.38** (dernière version avec la feature
   `bundled`) : SQLite est compilé dans l'app, aucune dépendance système
   (portabilité C1/C2).
@@ -259,7 +270,9 @@ Détails d'intégration (F3, ADR-002) :
 
 - **MSVC** (`x86_64-pc-windows-msvc`) : le manifest **Common-Controls v6** est
   émis automatiquement par le linker MSVC — `cargo build` **et** `cargo test`
-  passent sans précaution.
+  passent sans précaution. C'est la **seule** cible Windows utilisable pour
+  `TLDL_GPU=cuda` : `nvcc` n'accepte que `cl.exe` comme compilateur hôte
+  (MinGW est rejeté — « Host compiler targets unsupported OS »).
 - **MinGW/WinLibs** (`x86_64-pc-windows-gnu`, gcc 16.2) : `build.rs` détecte la
   cible `Gnu` — CMake via **Ninja**, ggml **sans OpenMP** (`GGML_OPENMP=OFF`),
   et des copies `lib`-préfixées des archives ggml (`libggml.a`, exigées par

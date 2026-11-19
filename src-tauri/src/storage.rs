@@ -200,6 +200,29 @@ impl Storage {
         Err("enregistrement introuvable".to_string())
     }
 
+    /// Résultats déjà produits pour un fichier (F16) — plus récents en
+    /// premier. Un même fichier peut avoir plusieurs enregistrements
+    /// (analyses distinctes selon les contextes de prompt — F15).
+    pub fn find_by_file(&self, file: &str) -> Result<Vec<HistoryRecord>, String> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown
+                 FROM records
+                 WHERE file = ?1
+                 ORDER BY id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = st
+            .query_map(params![file], |r| row_to_record(r))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
     /// Recherche plein texte (fichier, transcription, résumé) — F7.
     pub fn search(&self, query: &str) -> Result<Vec<HistoryRecord>, String> {
         let q = format!("%{}%", escape_like(query));
@@ -448,6 +471,29 @@ mod tests {
         // F15 : le nom de contexte est consigné et relitu.
         assert_eq!(rows[0].context_name, "Contrôle qualité");
         assert_eq!(rows[1].context_name, "Contexte par défaut");
+
+        // F16 : les résultats existants d'un fichier — un même fichier peut
+        // porter plusieurs analyses (contextes différents) ; le plus récent
+        // en premier.
+        let c = st
+            .save(
+                "a.wav",
+                now_epoch(),
+                12.0,
+                "small",
+                "gemma3-4b-q4",
+                "CPU",
+                "Décisions",
+                "troisième texte",
+                json,
+                "",
+            )
+            .expect("save c (même fichier que a)");
+        let by_file = st.find_by_file("a.wav").expect("find a.wav");
+        assert_eq!(by_file.len(), 2);
+        assert_eq!(by_file[0].id, c, "le plus récent doit précéder");
+        assert_eq!(by_file[1].id, a);
+        assert_eq!(st.find_by_file("inexistant-xyz").expect("find").len(), 0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

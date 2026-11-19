@@ -36,6 +36,7 @@ pub fn run() {
             commands::list_history,
             commands::get_history,
             commands::search_history,
+            commands::history_for_file,
             commands::list_contexts,
             commands::save_context,
             commands::delete_context,

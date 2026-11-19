@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
   DeviceInfo,
@@ -7,7 +7,13 @@ import type {
   ModelInfo,
   PipelineOutput,
   PromptContext,
+  Transcription,
 } from "../types";
+
+// F13 : convertit un chemin système en URL `asset://` servie par le
+// protocole asset (tauri.conf.json : `app.security.assetProtocol`) —
+// lecture du média source dans le lecteur de la page résultat.
+export { convertFileSrc };
 
 // Tauri 2 convertit les arguments des commandes (camelCase JS → snake_case
 // Rust) ; les VALEURS DE RETOUR ne sont pas converties : elles suivent les
@@ -50,6 +56,10 @@ export const getHistory = (id: number) =>
 export const searchHistory = (query: string) =>
   invoke<HistoryRecord[]>("search_history", { query });
 
+/** Résultats déjà produits pour un fichier (F16) — plus récents en premier. */
+export const historyForFile = (file: string) =>
+  invoke<HistoryRecord[]>("history_for_file", { file });
+
 /** Devices de calcul disponibles (F10) — CPU + GPU/iGPU détectés. */
 export const listDevices = () => invoke<DeviceInfo[]>("list_devices");
 
@@ -60,6 +70,34 @@ export const setConfig = (config: AppConfig) =>
 
 export const listContexts = () =>
   invoke<PromptContext[]>("list_contexts");
+
+/** Reconstruit le résultat affiché à partir d'un enregistrement (F7).
+ *  Utilisé par l'historique (F7) et la redirection F16. */
+export function toOutput(r: HistoryRecord): PipelineOutput {
+  let transcription: Transcription;
+  if (r.transcriptionJson) {
+    try {
+      transcription = JSON.parse(r.transcriptionJson) as Transcription;
+    } catch {
+      // JSON illisible : repli sur le texte seul, sans segments.
+      transcription = { text: r.transcription, segments: [], language: "" };
+    }
+  } else {
+    // Ligne écrite avant la migration : texte seul, pas de segments.
+    transcription = { text: r.transcription, segments: [], language: "" };
+  }
+  return {
+    transcription,
+    summaryMarkdown: r.summaryMarkdown,
+    summaryError: null,
+    asrModel: r.asrModel,
+    llmModel: r.llmModel,
+    device: r.device,
+    deviceNote: null,
+    file: r.file,
+    durationSecs: r.durationSecs,
+  };
+}
 
 export const saveContext = (
   id: number | null,

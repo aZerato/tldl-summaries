@@ -439,3 +439,23 @@ textarea {
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
+
+/* F13 : lecteur du média source (protocole asset Tauri) + segments
+   synchronisés (clic = saut, segment en cours surligné). */
+.player {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.player-note {
+  margin-top: 16px;
+}
+
+.segment.clickable {
+  cursor: pointer;
+}
+
+.segment.active {
+  background: var(--bg-card);
+  outline: 1px solid var(--accent);
+}

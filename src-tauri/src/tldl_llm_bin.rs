@@ -33,17 +33,28 @@ extern "C" {}
 
 // F10 : archives du backend GPU (ggml de llama.cpp, renommées `tldl_ggml*`
 // par build.rs), présentes seulement si `TLDL_GPU` l'a compilée ; le
-// registre `tldl_ggml` les référence (`GGML_USE_*`), d'où ces modules
-// *après* les liens ci-dessus.
+// registre `tldl_ggml` les référence (`GGML_USE_*`), d'où *après* les liens
+// ci-dessus. `#[link]` sur un *module* = ignoré par rustc : blocs `extern`
+// vides. Les import libs CUDA (cudart / cublas / pilote `cuda`) suivent :
+// référencés par les objets de `tldl_ggml-cuda`.
 #[cfg(tldl_gpu_cuda)]
 #[link(name = "tldl_ggml-cuda", kind = "static")]
-mod _ggml_backend_cuda {}
+extern "C" {}
+#[cfg(tldl_gpu_cuda)]
+#[link(name = "cudart", kind = "static")]
+extern "C" {}
+#[cfg(tldl_gpu_cuda)]
+#[link(name = "cublas", kind = "static")]
+extern "C" {}
+#[cfg(tldl_gpu_cuda)]
+#[link(name = "cuda", kind = "static")]
+extern "C" {}
 #[cfg(tldl_gpu_vulkan)]
 #[link(name = "tldl_ggml-vulkan", kind = "static")]
-mod _ggml_backend_vulkan {}
+extern "C" {}
 #[cfg(tldl_gpu_metal)]
 #[link(name = "tldl_ggml-metal", kind = "static")]
-mod _ggml_backend_metal {}
+extern "C" {}
 
 // Runtime C++ : les objets ggml/llama référencent `operator new`,
 // `__gxx_personality_seh0`, … — sur la cible GNU, Rust ne lie pas
