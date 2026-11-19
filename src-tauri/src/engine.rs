@@ -18,6 +18,16 @@ pub const N_CTX: c_int = 8192;
 const TOP_P: f32 = 0.95;
 /// Graine fixe : résumé reproductible à prompt identique.
 const SEED: u32 = 0;
+/// Pénalité de répétition (cf. shim C) : casse les boucles de dégénérescence
+/// du sampling — sans elle, le modèle re-récite le même bloc jusqu'à
+/// `max_tokens` sans EOS (ex. « résume en 10 phrases »).
+/// 1.2 = valeur d'Ollama par défaut ; 1.3 testé et abandonné : sur des
+/// entrées courtes le modèle se met à commenter ses propres règles au lieu
+/// de résumer.
+pub const REPEAT_PENALTY: f32 = 1.2;
+/// Fenêtre (tokens) de la pénalité de répétition : doit couvrir la période
+/// du bloc répété, sinon la boucle se soutient (cf. shim C).
+pub const PENALTY_WINDOW: c_int = 64;
 
 /// Moteur llama.cpp (modèle + contexte) — libéré via `Drop`.
 pub struct Engine {
@@ -58,6 +68,8 @@ impl Engine {
         prompt: &str,
         temperature: f32,
         max_tokens: u32,
+        repeat_penalty: f32,
+        penalty_window: c_int,
         progress: &mut dyn FnMut(u32, u32),
     ) -> Result<String, String> {
         let bytes = prompt.as_bytes();
@@ -75,6 +87,8 @@ impl Engine {
                 temperature,
                 TOP_P,
                 SEED,
+                repeat_penalty,
+                penalty_window,
                 out.as_mut_ptr() as *mut c_char,
                 out_max as c_int,
                 Some(progress_cb),
@@ -139,6 +153,8 @@ mod ffi {
             temperature: f32,
             top_p: f32,
             seed: u32,
+            repeat_penalty: f32,
+            penalty_window: c_int,
             out: *mut c_char,
             out_max: c_int,
             cb: Option<extern "C" fn(c_int, c_int, *mut c_void)>,

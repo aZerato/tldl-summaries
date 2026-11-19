@@ -11,8 +11,11 @@
 //! de toute façon ; cf. docs/architecture.md §5).
 //!
 //! Usage :
-//!   tldl-llm <gguf> <fichier_prompt> [max_tokens] [temperature] [n_gpu_layers]
+//!   tldl-llm <gguf> <fichier_prompt> [max_tokens] [temperature] [n_gpu_layers] \
+//!             [repeat_penalty] [penalty_window]
 //!   n_gpu_layers : -1 = GPU (toutes les couches), 0 = CPU (défaut) — F10.
+//!   repeat_penalty / penalty_window : pénalité de répétition du sampling
+//!   (cf. engine.rs) ; optionnels, valeurs par défaut = constantes du moteur.
 //!
 //! Protocole :
 //!   - stdout : le Markdown généré (et rien d'autre),
@@ -81,13 +84,17 @@ use std::os::raw::c_int;
 fn main() {
     let argv: Vec<String> = env::args().skip(1).map(|s| s.trim().to_string()).collect();
     let (Some(gguf), Some(prompt_file)) = (argv.first().cloned(), argv.get(1).cloned()) else {
-        eprintln!("usage : tldl-llm <gguf> <fichier_prompt> [max_tokens] [temperature] [n_gpu_layers]");
+        eprintln!("usage : tldl-llm <gguf> <fichier_prompt> [max_tokens] [temperature] [n_gpu_layers] [repeat_penalty] [penalty_window]");
         std::process::exit(2);
     };
     let max_tokens: u32 = argv.get(2).and_then(|s| s.parse().ok()).unwrap_or(1024);
     let temperature: f32 = argv.get(3).and_then(|s| s.parse().ok()).unwrap_or(0.3);
     // F10 : offload GPU. -1 = toutes les couches, 0 (défaut) = CPU.
     let n_gpu_layers: i32 = argv.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
+    // Pénalité de répétition + fenêtre (sampling, cf. engine.rs) : optionnel,
+    // valeurs par défaut = les constantes du moteur.
+    let repeat_penalty: f32 = argv.get(5).and_then(|s| s.parse().ok()).unwrap_or(engine::REPEAT_PENALTY);
+    let penalty_window: c_int = argv.get(6).and_then(|s| s.parse().ok()).unwrap_or(engine::PENALTY_WINDOW);
 
     let prompt = match std::fs::read_to_string(&prompt_file) {
         Ok(p) => p,
@@ -110,6 +117,8 @@ fn main() {
         &prompt,
         temperature,
         max_tokens,
+        repeat_penalty,
+        penalty_window,
         &mut |n, max| {
             let _ = write!(std::io::stderr(), "tldl-progress {n} {max}\n");
         },

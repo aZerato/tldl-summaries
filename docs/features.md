@@ -82,12 +82,15 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 
 ### F7 — Historique local (SQLite) 📋
 Liste des traitements (fichier, date, durée, modèles utilisés), recherche
-plein texte, réouverture d'un résultat.
+plein texte, réouverture d'un résultat, suppression d'une entrée.
 - **Statut** : code en place — consignation **auto après chaque pipeline
   réussi** (texte + segments horodatés en JSON, résumé) ; onglet
   « Historique » : liste (fichier, date, durée, modèles, extrait),
   recherche plein texte (fichier / transcription / résumé, debounce 300 ms),
-  réouverture en double-vue (F5) ; migration SQLite idempotente
+  réouverture en double-vue (F5), **suppression d'une entrée** (bouton
+  « Supprimer » + confirmation native `@tauri-apps/plugin-dialog` —
+  `window.confirm` n'est pas fiable sous le webview Tauri 2 ; commande
+  `delete_history` → `storage::delete_record`) ; migration SQLite idempotente
   (`transcription_json`) ; E2E `tldl-e2e history` (va-et-retour factice dans
   un dossier temporaire, jamais l'historique réel)
 
@@ -161,9 +164,10 @@ dédicée à la création / gestion.
   création rapide (nom + instructions) sans quitter la page
 - **Page « Contextes »** : création, modification, suppression (confirmée),
   favoris ★ épinglés en tête de liste
-- **Injection** : le contexte est inséré dans le prompt LLM (section «
-  Contexte d'analyse demandé par l'utilisateur ») — le binaire `tldl-llm`
-  n'est pas modifié (il lit le prompt complet depuis son fichier)
+- **Injection** : le contexte **remplace le format par défaut** (Synthèse /
+  Points clés / Décisions / Actions) dans le prompt LLM — cf.
+  architecture.md §5.1 ; le binaire `tldl-llm` n'est pas modifié (il lit le
+  prompt complet depuis son fichier)
 - **Traçabilité** : le nom du contexte est consigné dans l'historique
   (colonne `records.context_name`), affiché sur la ligne d'historique
 - **Stockage** : table SQLite `contexts` (même base que l'historique — F7)

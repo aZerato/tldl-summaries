@@ -86,7 +86,8 @@ void tldl_llama_free(TldlLlama * e) {
  * Retourne le nombre d'octets écrits, ou -1 en cas d'erreur. */
 int32_t tldl_llama_generate(TldlLlama * e, const char * prompt, int32_t prompt_len,
                            int32_t max_tokens, float temperature, float top_p,
-                           uint32_t seed, char * out, int32_t out_max,
+                           uint32_t seed, float repeat_penalty, int32_t penalty_window,
+                            char * out, int32_t out_max,
                            TldlLlamaProgress cb, void * user) {
     if (e == NULL || prompt == NULL || out == NULL) {
         return -1;
@@ -128,11 +129,17 @@ int32_t tldl_llama_generate(TldlLlama * e, const char * prompt, int32_t prompt_l
         return -1;
     }
 
-    /* Chaîne de sampling : temp -> top_p -> dist (graine fixe = reproductible). */
+    /* Chaîne de sampling : temp -> top_p -> penalties -> dist (graine fixe
+     * = reproductible). penalties après top_p : le balayage des répétitions
+     * ne porte que sur le sous-ensemble des candidats survivant (cf. NOTE
+     * de llama.h). freq/present à 0 : pas de pénalité sur toute la séquence
+     * (les mots de liaison du français seraient pénalisés à outrance). */
     struct llama_sampler * smpl =
         llama_sampler_chain_init(llama_sampler_chain_default_params());
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(temperature));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_p(top_p, 1));
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
+        (int32_t)llama_vocab_n_tokens(e->vocab), penalty_window, repeat_penalty, 0.0f, 0.0f));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(seed));
 
     int32_t n_out = 0;

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import {
+  deleteHistory,
   getHistory,
   listHistory,
   searchHistory,
@@ -31,8 +33,8 @@ export default function HistoryPage({ onOpen }: Props) {
   const [opening, setOpening] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Liste + recherche plein texte (F7) : debounce 300 ms.
-  useEffect(() => {
+  // Recharge la liste (sans debounce — ex. après une suppression).
+  function refresh() {
     const q = query.trim();
     if (q.length === 0) {
       listHistory()
@@ -41,16 +43,24 @@ export default function HistoryPage({ onOpen }: Props) {
           setError(String(e));
           setRows([]);
         });
-      return;
-    }
-    const t = setTimeout(() => {
+    } else {
       searchHistory(q)
         .then(setRows)
         .catch((e) => {
           setError(String(e));
           setRows([]);
         });
-    }, 300);
+    }
+  }
+
+  // Liste + recherche plein texte (F7) : debounce 300 ms.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length === 0) {
+      refresh();
+      return;
+    }
+    const t = setTimeout(() => refresh(), 300);
     return () => clearTimeout(t);
   }, [query]);
 
@@ -61,6 +71,26 @@ export default function HistoryPage({ onOpen }: Props) {
       .then((rec) => onOpen(toOutput(rec)))
       .catch((e) => setError(String(e)))
       .finally(() => setOpening(null));
+  }
+
+  async function remove(r: HistoryRecord) {
+    // Confirmation native (plugin dialog) — gate *avant* la suppression.
+    const ok = await confirm(
+      `Supprimer « ${baseName(r.file)} » de l'historique ?`,
+      {
+        title: "Supprimer de l'historique",
+        kind: "warning",
+        okLabel: "Supprimer",
+        cancelLabel: "Annuler",
+      },
+    );
+    if (!ok) return;
+    try {
+      await deleteHistory(r.id);
+      refresh();
+    } catch (e) {
+      setError(String(e));
+    }
   }
 
   return (
@@ -112,12 +142,23 @@ export default function HistoryPage({ onOpen }: Props) {
               }}
             >
               <span className="history-file">{baseName(r.file)}</span>
-              <span className="muted">
-                {fmtDate(r.created)} · {fmtDur(r.durationSecs)} · ASR{" "}
-                {r.asrModel} · LLM {r.llmModel}
-                {r.device ? ` · ${r.device}` : ""}
-                {r.contextName ? ` · ${r.contextName}` : ""}
-              </span>
+              <div className="row" style={{ marginTop: 0 }}>
+                <span className="muted" style={{ flex: 1 }}>
+                  {fmtDate(r.created)} · {fmtDur(r.durationSecs)} · ASR{" "}
+                  {r.asrModel} · LLM {r.llmModel}
+                  {r.device ? ` · ${r.device}` : ""}
+                  {r.contextName ? ` · ${r.contextName}` : ""}
+                </span>
+                <button
+                  className="btn danger"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove(r);
+                  }}
+                >
+                  Supprimer
+                </button>
+              </div>
               <span className="history-excerpt">
                 {r.transcription.length > 140
                   ? r.transcription.slice(0, 140) + "…"

@@ -114,12 +114,15 @@ dimensionne au **maximum** des deux, pas à leur somme
 
 - Rôle : assistant de synthèse de rencontre.
 - **Contexte utilisateur (F15)** : si un contexte de prompt est sélectionné
-  à l'import, il est injecté en tête du **prompt LLM** (section « Contexte
-  d'analyse demandé par l'utilisateur »). Il **oriente uniquement le résumé**
-  (l'étape LLM) : la **transcription** (ASR) n'est **jamais** modifiée, elle
-  reste fidèle à l'audio — on pilote seulement la *manière* dont la
-  transcription est résumée. À défaut, prompt « rencontre » par défaut. Le
-  nom du contexte est consigné dans l'historique.
+  à l'import, il **remplace le format par défaut** (Synthèse / Points clés /
+  Décisions / Actions à venir) : le prompt ne contient que la transcription
+  + l'instruction « Résume la transcription en suivant strictement ces
+  instructions » suivie des instructions du contexte. À défaut (aucun
+  contexte), prompt « rencontre » par défaut (format structuré ci-dessous).
+  Il **oriente uniquement le résumé** (l'étape LLM) : la **transcription**
+  (ASR) n'est **jamais** modifiée, elle reste fidèle à l'audio — on pilote
+  seulement la *manière* dont la transcription est résumée. Le nom du
+  contexte est consigné dans l'historique.
 - Entrée : transcription horodatée (tronquée / fusionnée si > contexte).
 - Sortie Markdown : **Synthèse** (1 paragraphe, 3–5 phrases) / **Points clés**
   (puces) / **Décisions** / **Actions à venir** (qui · quoi · échéance).
@@ -154,6 +157,15 @@ Mécanique :
 - Toute erreur LLM (démarrage, chargement GGUF, dépassement de contexte,
   crash du moteur) ne fait pas perdre la transcription → le résumé passe en
   bannière (`PipelineOutput.summary_error`).
+- **Sampling** (shim C, chaîne `temp → top_p → penalties → dist`) :
+  température 0.3, top_p 0.95, graine fixe 0 (résumés reproductibles), et
+  **pénalité de répétition 1.2** (fenêtre 64 tokens ; freq/present à 0 —
+  pas de pénalité sur toute la séquence, qui biaiserait les mots de liaison
+  du français). Sans elle, le modèle dégenère en boucle : il re-récite le
+  même bloc jusqu'à `max_tokens` sans EOS (ex. « résume en 10 phrases » —
+  corrigé, validé GPU : arrêt naturel à l'EOS). Sur des entrées très courtes
+  (1 phrase — E2E `jfk.wav`), la dégénérescence persiste côté CPU :
+  limitation du modèle 7B q4, pas du sampling.
 
 Vérifié (cible GNU, Qwen2.5-1.5B Q4_K_M) : ASR small → transcription, puis
 `tldl-llm` génère le Markdown (Synthèse / Points clés / Décisions / Actions

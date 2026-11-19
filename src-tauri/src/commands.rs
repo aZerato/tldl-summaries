@@ -222,6 +222,20 @@ pub fn history_for_file(
     state.storage.lock().unwrap().find_by_file(&file)
 }
 
+/// Supprime un enregistrement de l'historique (F7) ; erreur si introuvable.
+#[tauri::command]
+pub fn delete_history(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<(), String> {
+    state
+        .storage
+        .lock()
+        .unwrap()
+        .delete_record(id)
+        .map_err(|e| format!("historique : {e}"))
+}
+
 /// Contextes de prompt (F15) — favoris d'abord.
 #[tauri::command]
 pub fn list_contexts(

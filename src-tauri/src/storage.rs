@@ -248,6 +248,18 @@ impl Storage {
         Ok(out)
     }
 
+    /// Supprime un enregistrement de l'historique (F7) ; erreur si introuvable.
+    pub fn delete_record(&self, id: i64) -> Result<(), String> {
+        let n = self
+            .conn
+            .execute("DELETE FROM records WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        if n == 0 {
+            return Err("enregistrement introuvable".to_string());
+        }
+        Ok(())
+    }
+
     // --- Contextes de prompt (F15) ---
 
     /// Liste des contextes — favoris d'abord, puis création.
@@ -494,6 +506,12 @@ mod tests {
         assert_eq!(by_file[0].id, c, "le plus récent doit précéder");
         assert_eq!(by_file[1].id, a);
         assert_eq!(st.find_by_file("inexistant-xyz").expect("find").len(), 0);
+
+        // F7 : suppression d'un enregistrement (double = erreur).
+        st.delete_record(a).expect("delete a");
+        assert!(st.get(a).is_err(), "a supprimé");
+        assert!(st.delete_record(a).is_err(), "double suppression");
+        assert_eq!(st.list(50).expect("list").len(), 2, "b + c restants");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

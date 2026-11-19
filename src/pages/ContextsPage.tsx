@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import {
   deleteContext,
   listContexts,
@@ -20,6 +21,8 @@ export default function ContextsPage() {
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
   const [saving, setSaving] = useState(false);
+  // F15 : ancre du formulaire (l'édition y remonte — voir `edit`).
+  const formRef = useRef<HTMLDivElement>(null);
 
   async function load() {
     const r = await listContexts();
@@ -45,6 +48,9 @@ export default function ContextsPage() {
     setEditId(c.id);
     setName(c.name);
     setInstructions(c.instructions);
+    // F15 : l'édition se fait dans le formulaire ci-dessus — on y remonte
+    // pour que la modification soit immédiatement visible.
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function submit() {
@@ -62,7 +68,18 @@ export default function ContextsPage() {
   }
 
   async function remove(c: PromptContext) {
-    if (!window.confirm(`Supprimer le contexte « ${c.name} » ?`)) return;
+    // Confirmation native (plugin dialog) : gate *avant* la suppression —
+    // `window.confirm` n'est pas fiable sous le webview Tauri 2.
+    const ok = await confirm(
+      `Supprimer le contexte « ${c.name} » ?`,
+      {
+        title: "Supprimer le contexte",
+        kind: "warning",
+        okLabel: "Supprimer",
+        cancelLabel: "Annuler",
+      },
+    );
+    if (!ok) return;
     try {
       await deleteContext(c.id);
       if (editId === c.id) reset();
@@ -96,7 +113,7 @@ export default function ContextsPage() {
         </div>
       )}
 
-      <div className="context-form">
+      <div className="context-form" ref={formRef}>
         <h3>{editId === null ? "Nouveau contexte" : "Modifier le contexte"}</h3>
         <label className="field">
           Nom
@@ -122,7 +139,9 @@ export default function ContextsPage() {
             disabled={!name.trim() || saving}
             onClick={submit}
           >
-            {editId === null ? "Créer le contexte" : "Enregistrer les modifications"}
+            {editId === null
+              ? "Créer le contexte"
+              : "Enregistrer les modifications"}
           </button>
           {editId !== null && (
             <button className="btn" onClick={reset}>
@@ -152,7 +171,10 @@ export default function ContextsPage() {
                 </button>
                 <span className="history-file">{c.name}</span>
                 <span className="muted">{fmtDate(c.created)}</span>
-                <div className="row" style={{ marginLeft: "auto", marginTop: 0 }}>
+                <div
+                  className="row"
+                  style={{ marginLeft: "auto", marginTop: 0 }}
+                >
                   <button className="btn" onClick={() => edit(c)}>
                     Modifier
                   </button>

@@ -60,6 +60,10 @@ export const searchHistory = (query: string) =>
 export const historyForFile = (file: string) =>
   invoke<HistoryRecord[]>("history_for_file", { file });
 
+/** Supprime un enregistrement de l'historique (F7). */
+export const deleteHistory = (id: number) =>
+  invoke<null>("delete_history", { id });
+
 /** Devices de calcul disponibles (F10) — CPU + GPU/iGPU détectés. */
 export const listDevices = () => invoke<DeviceInfo[]>("list_devices");
 
