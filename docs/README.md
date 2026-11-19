@@ -11,7 +11,7 @@ garantie.
 > fonctionnalité arrêtée, les documents sont mis à jour. Les choix majeurs
 > sont tracés en ADR avec un statut.
 
-_Dernière mise à jour : 14/11/2026_
+_Dernière mise à jour : 19/11/2026_
 
 ## Index
 
@@ -41,4 +41,6 @@ _Dernière mise à jour : 14/11/2026_
 - **MVP** : import média → conversion vidéo→audio → transcription → résumé,
   double-vue (transcription + résumé), menu des modèles, récupération des
   modèles (opt-in)
+- **UI** : refonte visuelle du 19/11/2026 — fond sombre quasi inchangé,
+  accent orange unique (`src/index.css`)
 - Prochaine étape : scaffold du projet (Tauri 2 + Rust + React/TS)

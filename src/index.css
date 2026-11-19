@@ -1,12 +1,15 @@
 :root {
   color-scheme: dark;
-  --bg: #0f1115;
-  --bg-soft: #171a21;
-  --bg-card: #1c2029;
-  --text: #e7e9ee;
-  --muted: #8b91a0;
-  --accent: #5b8cff;
-  --border: #2a2f3a;
+  --bg: #101114;
+  --bg-soft: #17191e;
+  --bg-card: #1d2026;
+  --text: #e9e7e3;
+  --muted: #948e86;
+  --accent: #ff8a1e;
+  --accent-strong: #ffa143;
+  --accent-soft: rgba(255, 138, 30, 0.14);
+  --accent-line: rgba(255, 138, 30, 0.4);
+  --border: #2b2e35;
   --error: #ff6b6b;
 }
 
@@ -21,6 +24,33 @@ body {
   color: var(--text);
 }
 
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Barres de défilement discrètes, pouce orange au survol. */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-line);
+}
+
+/* ── Cadre de l'app ─────────────────────────────────────────────── */
+
 .app {
   display: flex;
   flex-direction: column;
@@ -32,13 +62,27 @@ body {
   align-items: center;
   gap: 20px;
   padding: 10px 16px;
+  border-top: 3px solid var(--accent);
   border-bottom: 1px solid var(--border);
-  background: var(--bg-soft);
+  background: linear-gradient(180deg, #1a1d23 0%, #17191e 100%);
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-weight: 700;
   letter-spacing: 0.5px;
+}
+
+/* Point « enregistrement » : la signature du thème. */
+.brand::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(255, 138, 30, 0.7);
 }
 
 .tabs {
@@ -54,6 +98,7 @@ body {
   border-radius: 8px;
   cursor: pointer;
   font-size: 14px;
+  transition: color 0.15s, background 0.15s;
 }
 
 .tab:hover {
@@ -61,7 +106,7 @@ body {
 }
 
 .tab.active {
-  background: var(--bg-card);
+  background: var(--accent-soft);
   color: var(--text);
 }
 
@@ -76,15 +121,50 @@ body {
   color: var(--muted);
 }
 
+.app-sub::before {
+  content: "●";
+  color: var(--accent);
+  margin-right: 6px;
+  font-size: 8px;
+  vertical-align: middle;
+}
+
 .app-main {
   flex: 1;
   overflow: auto;
 }
 
+/* ── Mise en page des pages ──────────────────────────────────────── */
+
 .page {
   max-width: 860px;
   margin: 0 auto;
   padding: 24px 16px;
+}
+
+.page > h2 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 20px;
+  position: relative;
+  padding-bottom: 10px;
+}
+
+/* Trait orange sous le titre de page. */
+.page > h2::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+h3 {
+  margin-top: 0;
+  font-size: 14px;
 }
 
 .muted {
@@ -96,21 +176,25 @@ body {
   margin-top: 24px;
 }
 
-.drop {
-  border: 2px dashed var(--border);
-  border-radius: 12px;
-  padding: 40px 20px;
-  text-align: center;
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
 }
 
-.drop.over {
-  border-color: var(--accent);
+.row.spread {
+  justify-content: space-between;
 }
 
-.drop-title {
-  margin: 0 0 8px;
-  font-size: 16px;
+code {
+  background: var(--bg-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
 }
+
+/* ── Boutons ─────────────────────────────────────────────────────── */
 
 .btn {
   background: var(--bg-card);
@@ -120,6 +204,7 @@ body {
   padding: 8px 16px;
   cursor: pointer;
   font-size: 14px;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
 
 .btn:hover {
@@ -134,7 +219,13 @@ body {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: #1a1206;
+  font-weight: 600;
+}
+
+.btn.primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 
 .btn.danger {
@@ -162,7 +253,7 @@ body {
 }
 
 .link:hover {
-  color: var(--text);
+  color: var(--accent-strong);
 }
 
 .btn.fav {
@@ -172,6 +263,44 @@ body {
   padding: 0 4px;
   font-size: 15px;
   line-height: 1;
+}
+
+.btn.fav:hover {
+  color: var(--accent-strong);
+}
+
+.tab:focus-visible,
+.btn:focus-visible,
+.link:focus-visible,
+.history-row:focus-visible,
+.segment:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+.search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Import (drop, fiche de fichier) ─────────────────────────────── */
+
+.drop {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.drop.over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.drop-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .file-card {
@@ -187,16 +316,7 @@ body {
   word-break: break-all;
 }
 
-.row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-top: 16px;
-}
-
-.row.spread {
-  justify-content: space-between;
-}
+/* ── Progression (pipeline + téléchargements) ───────────────────── */
 
 .progress {
   margin-top: 16px;
@@ -209,17 +329,20 @@ body {
 }
 
 .progress-bar {
-  height: 6px;
+  height: 8px;
   background: var(--bg-card);
-  border-radius: 3px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .progress-bar > div {
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, #e8740e 0%, #ffa143 100%);
+  border-radius: 4px;
   transition: width 0.2s;
 }
+
+/* ── Erreurs / avertissements ────────────────────────────────────── */
 
 .error {
   margin-top: 16px;
@@ -229,17 +352,23 @@ body {
   padding: 10px 12px;
   font-size: 13px;
   white-space: pre-wrap;
+  background: rgba(255, 107, 107, 0.07);
 }
+
+/* ── Résumé ──────────────────────────────────────────────────────── */
 
 pre.markdown {
   background: var(--bg-card);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
   border-radius: 10px;
   padding: 16px;
   white-space: pre-wrap;
   font-family: inherit;
   line-height: 1.55;
 }
+
+/* ── Segments de transcription ───────────────────────────────────── */
 
 .segments {
   list-style: none;
@@ -255,7 +384,7 @@ pre.markdown {
 }
 
 .segment:hover {
-  background: var(--bg-card);
+  background: var(--bg-soft);
 }
 
 .segment-time {
@@ -263,6 +392,8 @@ pre.markdown {
   font-variant-numeric: tabular-nums;
   min-width: 42px;
 }
+
+/* ── Cartes & modèles ─────────────────────────────────────────────── */
 
 .card {
   background: var(--bg-card);
@@ -272,13 +403,14 @@ pre.markdown {
   margin-bottom: 16px;
 }
 
-h2 {
-  margin-top: 0;
-}
-
-h3 {
-  margin-top: 0;
-  font-size: 14px;
+/* Libellé de section : orange, capitales — marque du thème. */
+.card > h3 {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 10px;
 }
 
 .model-row {
@@ -287,11 +419,16 @@ h3 {
   align-items: center;
   padding: 8px 10px;
   border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.model-row:hover {
+  background: var(--bg-soft);
 }
 
 .model-row.active {
-  background: var(--bg-soft);
-  outline: 1px solid var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
 }
 
 .model-pick {
@@ -326,7 +463,8 @@ h3 {
 .dl-bar > span {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, #e8740e 0%, #ffa143 100%);
+  border-radius: 3px;
   transition: width 0.15s;
 }
 
@@ -345,10 +483,13 @@ h3 {
 .badge {
   font-size: 11px;
   color: var(--accent);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
   border-radius: 999px;
   padding: 1px 8px;
 }
+
+/* ── Champs de formulaire ────────────────────────────────────────── */
 
 .field {
   display: flex;
@@ -356,11 +497,22 @@ h3 {
   gap: 6px;
   margin-bottom: 14px;
   font-size: 13px;
+  color: var(--muted);
 }
 
 select,
-input[type="range"] {
+input[type="range"],
+input[type="radio"],
+input[type="checkbox"] {
   accent-color: var(--accent);
+}
+
+input[type="radio"],
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
 }
 
 select {
@@ -371,6 +523,21 @@ select {
   padding: 6px 8px;
 }
 
+input[type="text"] {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+input[type="text"]::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
 .search {
   background: var(--bg);
   color: var(--text);
@@ -379,6 +546,8 @@ select {
   padding: 6px 8px;
   font-size: 13px;
 }
+
+/* ── Historique / listes ─────────────────────────────────────────── */
 
 .history-list {
   display: flex;
@@ -395,10 +564,11 @@ select {
   border-radius: 10px;
   padding: 10px 12px;
   cursor: pointer;
+  transition: border-color 0.15s;
 }
 
 .history-row:hover {
-  border-color: var(--accent);
+  border-color: var(--accent-line);
 }
 
 .history-row.opening {
@@ -415,6 +585,7 @@ select {
 .context-form {
   background: var(--bg-card);
   border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
   border-radius: 10px;
   padding: 12px 14px;
   margin-top: 16px;
@@ -447,6 +618,10 @@ textarea {
   margin-top: 16px;
 }
 
+audio {
+  accent-color: var(--accent);
+}
+
 .player-note {
   margin-top: 16px;
 }
@@ -456,6 +631,6 @@ textarea {
 }
 
 .segment.active {
-  background: var(--bg-card);
+  background: var(--accent-soft);
   outline: 1px solid var(--accent);
 }
