@@ -114,9 +114,12 @@ dimensionne au **maximum** des deux, pas à leur somme
 
 - Rôle : assistant de synthèse de rencontre.
 - **Contexte utilisateur (F15)** : si un contexte de prompt est sélectionné
-  à l'import, il est injecté en tête de prompt (section « Contexte d'analyse
-  demandé par l'utilisateur ») avant la transcription ; sinon prompt par
-  défaut. Le nom du contexte est consigné dans l'historique.
+  à l'import, il est injecté en tête du **prompt LLM** (section « Contexte
+  d'analyse demandé par l'utilisateur »). Il **oriente uniquement le résumé**
+  (l'étape LLM) : la **transcription** (ASR) n'est **jamais** modifiée, elle
+  reste fidèle à l'audio — on pilote seulement la *manière* dont la
+  transcription est résumée. À défaut, prompt « rencontre » par défaut. Le
+  nom du contexte est consigné dans l'historique.
 - Entrée : transcription horodatée (tronquée / fusionnée si > contexte).
 - Sortie Markdown : **Synthèse** (1 paragraphe, 3–5 phrases) / **Points clés**
   (puces) / **Décisions** / **Actions à venir** (qui · quoi · échéance).
@@ -258,6 +261,17 @@ Détails d'intégration (F3, ADR-002) :
    l'architecture cible GNU `X8664` — la variable de cache court-circuite
    la recherche de `cudart.lib`) et `CMAKE_CUDA_HOST_COMPILER` (g++ du
    toolchain — sans lui `nvcc` cherche `cl.exe`).
+- **Lancer le dev GPU (Windows)** : `npm run dev:gpu` → wrapper
+  `src-tauri/scripts/dev-gpu.ps1`, qui (1) recharge l'env VS **capturé et
+  versionné** (`src-tauri/scripts/vscmd_env.txt` — cl/nmake/INCLUDE/LIB),
+  (2) fixe le gate `TLDL_GPU=cuda` + `CUDA_PATH`, (3) met `bin\x64`
+  (cublas64/cudart64) sur le PATH **runtime** (DLL chargées au boot de
+  l'app), puis `npm run tauri dev`. Un `npm run tauri dev` dans un shell nu
+  **échoue** : `build.rs` sans env VS/CUDA (`nmake`/`cl` introuvables →
+  build script exit 101) et, une fois l'app lancée, `STATUS_DLL_NOT_FOUND`
+  sans le `bin\x64` runtime. `vscmd_env.txt` est un *snapshot* de la
+  toolchain VS de la machine (chemins absolus) : à régénérer si le VS Build
+  Tools se déplace.
 - `rusqlite` est épinglé à **0.38** (dernière version avec la feature
   `bundled`) : SQLite est compilé dans l'app, aucune dépendance système
   (portabilité C1/C2).

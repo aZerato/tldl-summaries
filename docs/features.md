@@ -153,7 +153,7 @@ Lecteur audio intégré à la page Résultat, synchronisé aux segments.
 Proposer de travailler soit sur le fichier complet ou sur des sections.
 
 ### F15 - Contextes de prompt ⏳
-L'utilisateur choisit ou crée un contexte d'analyse / résumé avant de
+L'utilisateur choisit ou crée un contexte de résumé avant de
 demander une transcription ; favoris pour la réutilisation rapide ; page
 dédicée à la création / gestion.
 - **Choix à l'import** : sélecteur « Contexte d'analyse / résumé »

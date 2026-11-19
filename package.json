@@ -6,6 +6,7 @@
   "description": "Synthèse locale d'audio/vidéo : transcription + résumé, 100 % hors ligne",
   "scripts": {
     "dev": "vite",
+    "dev:gpu": "powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/scripts/dev-gpu.ps1",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri"
   },
