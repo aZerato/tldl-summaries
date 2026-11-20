@@ -405,6 +405,23 @@ pub fn move_record(
         .map_err(|e| format!("dossiers : {e}"))
 }
 
+/// Rangement de groupe (F19) : tous les enregistrements d'un fichier
+/// (même transcription) vers un dossier, ou « Sans dossier »
+/// (`folder = None`) — atomique, le groupe n'est jamais partagé.
+#[tauri::command]
+pub fn move_file_to_folder(
+    state: State<'_, AppState>,
+    file: String,
+    folder: Option<i64>,
+) -> Result<usize, String> {
+    state
+        .storage
+        .lock()
+        .unwrap()
+        .move_file_records(&file, folder)
+        .map_err(|e| format!("dossiers : {e}"))
+}
+
 /// Enregistrements rangés dans un dossier (F19) — `folder = None` =
 /// « Sans dossier ». Plus récents en premier.
 #[tauri::command]

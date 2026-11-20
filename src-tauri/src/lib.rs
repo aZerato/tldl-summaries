@@ -43,6 +43,7 @@ pub fn run() {
             commands::list_folders,
             commands::delete_folder,
             commands::move_record,
+            commands::move_file_to_folder,
             commands::list_history_folder,
             commands::list_contexts,
             commands::save_context,

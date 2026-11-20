@@ -21,6 +21,10 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
   absolus, `dragDropEnabled: true`) — dans le webview Tauri 2, les `drop`
   DOM ne se déclenchent pas (interception native) et `File.path` n'existe
   pas ; le sélecteur passe par le plugin `dialog`
+- **Coexistence F1/F19** : `dragDropEnabled: true` est requis pour ce
+  dépôt OS ; en contrepartie le drag & drop **interne** (F19, rangement
+  dans les dossiers) ne peut pas être HTML5 (la cible native le dispute)
+  — il est donc piloté par **pointeur** (cf. F19)
 - **Critères** : les 11 extensions ci-dessus acceptées sans crash ;
   durée + format affichés après sonde ; fichiers ≥ 2 Go gérés
 
@@ -259,6 +263,10 @@ d'un dossier vers un autre dossier.
   d'enregistrements par dossier), `delete_folder`, `move_record`
   (enregistrement → dossier, ou « Sans dossier » — erreur si
   l'enregistrement ou le dossier est introuvable),
+  `move_file_to_folder` (rangement de **groupe** : tous les enregistrements
+  d'un même fichier — même transcription — d'un seul `UPDATE`, **atomique**
+  : le groupe n'est jamais partagé entre deux dossiers ; erreur si le
+  fichier ou le dossier est introuvable),
   `list_history_folder` (vue d'un dossier, plus récents en premier ;
   `NULL` = « Sans dossier »)
 - **UI (historique)** : panneau latéral « Dossiers » — « Sans dossier »
@@ -266,11 +274,19 @@ d'un dossier vers un autre dossier.
   native — ses résultats repassent « Sans dossier »), création rapide
   (le nouveau dossier s'ouvre) ; la liste affiche le contenu du dossier
   ouvert (défaut : « Sans dossier ») ; les lignes sont **glissables**
-  (drag & drop HTML5 dans le webview — indépendant de l'interception
-  native des fichiers OS, cf. F1) vers un dossier ou « Sans dossier »
-  (cible surlignée au survol) ; sélecteur « ranger dans un dossier »
-  par ligne (alternative au glisser-déposer) ; la recherche plein texte
-  (F7) reste **globale** (tous dossiers)
+  (drag & drop par **pointeur** — pression + déplacement + relâche,
+  `pointerdown/pointermove/pointerup` + hit-test `elementFromPoint` +
+  ghost ; **pas** de drag & drop HTML5, qui sous WebView2/Windows est
+  disputé par la cible native de wry dès que `dragDropEnabled: true`,
+  cf. F1 — les deux UX de glisser-déposer coexistent) vers un dossier
+  ou « Sans dossier » (cible surlignée au survol) ; sélecteur « ranger
+  dans un dossier » par ligne (alternative au glisser-déposer) ;
+  **groupe** : l'en-tête d'un groupe (tous les résumés d'une même
+  transcription) est glissable lui aussi — le groupe se déplace entier,
+  jamais à moitié — + sélecteur « ranger le groupe » (si le groupe est partagé
+  entre dossiers, l'état « Groupe partagé… » s'affiche jusqu'au prochain
+  rangement) ; la recherche plein texte (F7) reste **globale** (tous
+  dossiers)
 - **UI (résultat)** : sélecteur « Rangement » du résultat affiché (même
   commande `move_record` ; l'enregistrement est identifié par son id
   traçé dans `App`)

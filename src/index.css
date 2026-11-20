@@ -590,13 +590,24 @@ textarea::placeholder {
   padding: 10px 12px;
 }
 
+/* F19 : en-tête de groupe glissable — déplace TOUS les résumés du fichier
+   (même transcription), pas un seul résumé. */
 .history-group-head {
   display: flex;
   gap: 10px;
-  align-items: baseline;
+  align-items: center;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 2px;
+  cursor: grab;
+}
+
+.history-group-head:active {
+  cursor: grabbing;
+}
+
+.history-group-head.dragging {
+  opacity: 0.5;
 }
 
 .history-group > .history-row {
@@ -776,11 +787,7 @@ audio {
   white-space: nowrap;
 }
 
-/* Ligne d'historique glissable (F19) : drag & drop vers un dossier. */
-.history-row.draggable {
-  cursor: grab;
-}
-
+/* F19 : ligne en cours de glissée (pilotée par POINTUEUR) — atténuée. */
 .history-row.dragging {
   opacity: 0.5;
 }
@@ -789,4 +796,34 @@ audio {
 .folder-pick {
   max-width: 170px;
   flex-shrink: 0;
+}
+
+/* F19 : drag & drop par POINTUEUR (pression + déplacement + relâche) —
+   découplé du dépôt de fichiers OS (F1, natif de wry). */
+/* Ghost qui suit le curseur — `pointer-events: none` (ne gêne pas le
+   hit-test `elementFromPoint`). */
+.dnd-ghost {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  transform: translate(12px, 12px);
+  background: var(--bg-card);
+  border: 1px solid var(--accent-line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+/* Pendant un glisser (classe posée sur <body>) : pas de sélection de texte,
+   curseur « en train de porter ». */
+body.tldl-dnd {
+  user-select: none;
+  cursor: grabbing;
 }

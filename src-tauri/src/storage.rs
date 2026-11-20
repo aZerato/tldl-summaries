@@ -372,6 +372,43 @@ impl Storage {
         Ok(())
     }
 
+    /// Rangement de groupe (F19) : déplace **tous** les enregistrements
+    /// d'un fichier (même transcription, un groupe de résumés) vers un
+    /// dossier ou « Sans dossier » (`None`) — **atomique** (un seul
+    /// `UPDATE`) : le groupe n'est jamais partagé entre deux dossiers.
+    /// Renvoie le nombre d'enregistrements déplacés ; erreur si le
+    /// fichier ou le dossier est introuvable.
+    pub fn move_file_records(
+        &self,
+        file: &str,
+        folder_id: Option<i64>,
+    ) -> Result<usize, String> {
+        if let Some(f) = folder_id {
+            let c: i64 = self
+                .conn
+                .query_row(
+                    "SELECT COUNT(*) FROM folders WHERE id = ?1",
+                    params![f],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if c == 0 {
+                return Err("dossier introuvable".to_string());
+            }
+        }
+        let n = self
+            .conn
+            .execute(
+                "UPDATE records SET folder_id = ?1 WHERE file = ?2",
+                params![folder_id, file],
+            )
+            .map_err(|e| e.to_string())?;
+        if n == 0 {
+            return Err("fichier introuvable".to_string());
+        }
+        Ok(n as usize)
+    }
+
     /// Enregistrements rangés dans un dossier (F19) — `None` = « Sans
     /// dossier ». Plus récents en premier.
     pub fn list_in_folder(
@@ -772,18 +809,42 @@ mod tests {
         st.move_record(b, Some(9_999_999)).expect_err("dossier introuvable");
         st.move_record(9_999_999, None).expect_err("enregistrement introuvable");
 
+        // Rangement de groupe : tous les enregistrements d'un même fichier
+        // (même transcription) d'un seul coup — même si le groupe est
+        // parti (c1 rangé dans f2, c2 « Sans dossier »).
+        let c1 = mk("c.wav", "Contexte par défaut", "troisième texte").expect("save c1");
+        let c2 = mk("c.wav", "Contrôle qualité", "quatrième texte").expect("save c2");
+        st.move_record(c1, Some(f2)).expect("move c1 -> f2");
+        let n = st
+            .move_file_records("c.wav", Some(f1))
+            .expect("move groupe -> f1");
+        assert_eq!(n, 2);
+        assert_eq!(st.get(c1).expect("c1").folder_id, Some(f1));
+        assert_eq!(st.get(c2).expect("c2").folder_id, Some(f1));
+        let fg = st.list_folders().expect("folders g");
+        assert_eq!(fg.iter().find(|f| f.id == f1).expect("f1").count, 2);
+        // Cas d'erreur : fichier inconnu, dossier inconnu.
+        st.move_file_records("inexistant.wav", Some(f1))
+            .expect_err("fichier introuvable");
+        st.move_file_records("c.wav", Some(9_999_999))
+            .expect_err("dossier introuvable");
+        // Retour « Sans dossier » : le groupe entier, atomique.
+        st.move_file_records("c.wav", None).expect("move groupe -> sans");
+        assert!(st.get(c1).expect("c1").folder_id.is_none());
+        assert!(st.get(c2).expect("c2").folder_id.is_none());
+
         // Suppression : les enregistrements du dossier repassent « Sans
         // dossier » (jamais supprimés) ; double suppression = erreur.
         st.delete_folder(f1).expect("delete f1");
         assert_eq!(st.list_folders().expect("folders 2").len(), 1);
-        // a est déjà sorti (plus haut) ; b est toujours rangé dans f2.
-        assert_eq!(st.list_in_folder(None, 50).expect("sans 3").len(), 1);
+        // a, c1, c2 sont « Sans dossier » ; b est toujours rangé dans f2.
+        assert_eq!(st.list_in_folder(None, 50).expect("sans 3").len(), 3);
         assert_eq!(st.get(b).expect("b").folder_id, Some(f2));
         st.delete_folder(f1).expect_err("double suppression");
         // Dernier dossier : b repasse « Sans dossier » (jamais supprimé).
         st.delete_folder(f2).expect("delete f2");
         assert!(st.list_folders().expect("folders 3").is_empty());
-        assert_eq!(st.list_in_folder(None, 50).expect("sans 4").len(), 2);
+        assert_eq!(st.list_in_folder(None, 50).expect("sans 4").len(), 4);
         assert!(st.get(a).expect("a").folder_id.is_none());
         assert!(st.get(b).expect("b").folder_id.is_none());
 

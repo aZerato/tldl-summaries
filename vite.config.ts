@@ -8,5 +8,11 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    // Ne pas regarder le build Rust : CMake/Cargo réécrivent `target/`
+    // (un `scandir` en cours de build faisait planter le watcher Vite,
+    // et avec lui le serveur de dev).
+    watcher: {
+      ignored: ["**/target/**"],
+    },
   },
 });

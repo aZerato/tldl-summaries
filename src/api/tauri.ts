@@ -91,6 +91,14 @@ export const moveRecord = (id: number, folderId: number | null) =>
     folderId: folderId === null ? null : folderId,
   });
 
+/** Rangement de groupe (F19) : tous les résumés d'une même transcription
+ *  (un fichier) vers un dossier, ou « Sans dossier » — atomique côté Rust. */
+export const moveFileToFolder = (file: string, folderId: number | null) =>
+  invoke<number>("move_file_to_folder", {
+    file,
+    folder: folderId === null ? null : folderId,
+  });
+
 /** Enregistrements rangés dans un dossier (F19) — `null` = « Sans dossier ». */
 export const listHistoryFolder = (folderId: number | null, limit = 50) =>
   invoke<HistoryRecord[]>("list_history_folder", {

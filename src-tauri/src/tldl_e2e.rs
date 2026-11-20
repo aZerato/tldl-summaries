@@ -845,6 +845,61 @@ fn run_folders_e2e() {
         std::process::exit(1);
     }
 
+    // Rangement de groupe (F19) : tous les résumés d'un même fichier
+    // (même transcription) d'un seul coup — même si le groupe est parti
+    // (c1 rangé dans le dossier, c2 « Sans dossier »).
+    let fail = |msg: &str| -> ! {
+        eprintln!("ÉCHEC E2E folders : {msg}");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::process::exit(1);
+    };
+    let c1 = match mk(
+        "C:\\fake\\audio3.wav",
+        "Contexte par défaut",
+        "troisième texte",
+        "résumé C1",
+    ) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("save c1 ({e})")),
+    };
+    let c2 = match mk(
+        "C:\\fake\\audio3.wav",
+        "Contrôle qualité",
+        "quatrième texte",
+        "résumé C2",
+    ) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("save c2 ({e})")),
+    };
+    if let Err(e) = st.move_record(c1, Some(f1)) {
+        fail(&format!("move c1 -> dossier ({e})"));
+    }
+    let n = match st.move_file_records("C:\\fake\\audio3.wav", Some(f1)) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("move groupe -> dossier ({e})")),
+    };
+    if n != 2
+        || st.get(c1).unwrap().folder_id != Some(f1)
+        || st.get(c2).unwrap().folder_id != Some(f1)
+    {
+        fail(&format!("groupe non entier après move ({n})"));
+    }
+    if st.move_file_records("C:\\fake\\inexistant.wav", Some(f1)).is_ok() {
+        fail("move de groupe inconnu aurait dû échouer");
+    }
+    if st
+        .move_file_records("C:\\fake\\audio3.wav", Some(9_999_999))
+        .is_ok()
+    {
+        fail("move groupe vers dossier inconnu aurait dû échouer");
+    }
+    if let Err(e) = st.move_file_records("C:\\fake\\audio3.wav", None) {
+        fail(&format!("move groupe -> « Sans dossier » ({e})"));
+    }
+    if st.list_in_folder(None, 50).unwrap().len() != 4 {
+        fail("« Sans dossier » incomplet après sortie du groupe");
+    }
+
     // Cas d'erreur : dossier inconnu, enregistrement inconnu.
     if st.move_record(b, Some(9_999_999)).is_ok() {
         eprintln!("ÉCHEC E2E folders : move vers dossier inconnu aurait dû échouer");
