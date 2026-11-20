@@ -161,8 +161,37 @@ Lecteur audio intégré à la page Résultat, synchronisé aux segments.
 - **Statut** : code en place (Rust `file` + asset-protocol + player/sync
   frontend) ; frontend `tsc`+`vite` vert ; à valider dans l'app
 
-### F14 - Travail par section 🔎
-Proposer de travailler soit sur le fichier complet ou sur des sections.
+### F14 - Travail par section ⏳
+À l'import, travailler soit sur le fichier complet, soit sur une section
+(Pré-écoute + coupe du début et de la fin par sliders) — la coupe est
+**optionnelle** (défaut = fichier complet).
+- **UI à l'import** : après sonde, carte « Pré-écoute » — lecteur du média
+  source (protocole asset, cf. F13 — `convertFileSrc`) + **2 sliders**
+  (Début / Fin, pas 0,1 s, bornés l'un à l'autre : début ≤ fin), affichage
+  de la section (`mm:ss → mm:ss` + durée traitée) + bouton « Tout le
+  fichier » (repli défaut)
+- **Traitement (pas seulement l'affichage)** : FFmpeg ne convertit que
+  `[début, fin]` (entrée `-ss début` + `-t fin-début`) en WAV 16 kHz mono —
+  ASR et LLM ne voient que la section ; le LLM ne résume que ce qui a été
+  transcrit dedans
+- **Horodatages** : les segments émis sont relatifs à la section (0-based,
+  WAV intermédiaire) — le pipeline les **décale de `début`** pour rester
+  alignés sur le fichier source : le lecteur de la page Résultat (F13, qui
+  lit le source) saute au bon endroit sans modification
+- **Consignation** : `records.section_start` / `section_end` (SQLite,
+  migration idempotente ; lignes pré-migration = `0` / `duration_secs`
+  = fichier complet), `PipelineOutput.sectionStart` / `sectionEnd`
+  (camelCase) ; le re-résumé (F16) **préserve** la section de
+  l'enregistrement d'origine (pas de re-tronçonnage) ; pied de page
+  Résultat : « section mm:ss → mm:ss » ou « fichier complet »
+- **Backend** : `run_pipeline` prend `section_start` / `section_end`
+  (`Option<f64>`) ; le pipeline borne à la durée sonde
+  (`effective_section`) — sentinelle `end = 0` = « jusqu'à la fin »,
+  section vide (fin ≤ début) = erreur claire
+- **Statut** : code en place (Rust + frontend + E2E `tldl-e2e section`
+  vert : section [20 %, 80 %] sur `jfk.wav` — bornes reportées, segments
+  dans la section, texte plus court que le complet) ; à valider dans
+  l'app (pré-écoute + sliders à l'import)
 
 ### F15 - Contextes de prompt ⏳
 L'utilisateur choisit ou crée un contexte de résumé avant de

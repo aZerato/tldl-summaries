@@ -42,6 +42,12 @@ function fmtDate(epoch: number): string {
   return new Date(epoch * 1000).toLocaleString();
 }
 
+function fmtTime(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export default function ResultPage({
   result,
   recordId,
@@ -461,7 +467,14 @@ export default function ResultPage({
           </>
         )}
         ASR : {result.asrModel} · LLM : {result.llmModel} · Device :{" "}
-        {result.device} · {Math.round(result.durationSecs)} s de média
+        {result.device} · {Math.round(result.durationSecs)} s de média ·{" "}
+        {result.sectionStart > 0 || result.sectionEnd < result.durationSecs ? (
+          <span title="Section traitée (F14) — les segments sont décalés du début de section pour rester alignés sur le fichier source">
+            section {fmtTime(result.sectionStart)} → {fmtTime(result.sectionEnd)}
+          </span>
+        ) : (
+          "fichier complet"
+        )}
       </div>
     </div>
   );

@@ -93,17 +93,24 @@ tldl-summaries/
 ```
 fichier audio/vidéo
    │  import + probe (ffprobe : format, durée, validité)
+   │  F14 : section [début, fin] choisie à l'import (pré-écoute +
+   │  sliders) — défaut = fichier complet
    ▼
-WAV PCM 16 kHz mono          ← FFmpeg (C5 : vidéo → audio dans l'app)
-   │                            fichier temporaire, supprimé après traitement
+WAV PCM 16 kHz mono          ← FFmpeg : **la section** [début, fin] seule
+   │                            (-ss début + -t fin-début) ; C5 : vidéo →
+   │                            audio dans l'app ; fichier temporaire,
+   │                            supprimé après traitement
    ▼
 Transcription                ← whisper.cpp (GGUF ; langue auto/FR ;
    │                             segments + horodatages)
+   │  F14 : segments décalés de `début` (relatifs à la section → alignés
+   │  sur le fichier source, cf. F13)
    ▼
 Résumé structuré             ← LLM local (llama.cpp), prompt « rencontre »
    │                            Synthèse / Points clés / Décisions / Actions
    ▼
 UI : double-vue (Transcription | Résumé) + copie + historique (SQLite)
+   │  F14 : section consignée (records.section_start / section_end)
 ```
 
 Remarque : ASR et LLM ne s'exécutent **pas en même temps** → la RAM se
@@ -116,6 +123,20 @@ analysé, seule l'étape **LLM** est relancée sur la transcription stockée
 conversion, pas d'ASR) ; un nouvel enregistrement est consigné (même
 transcription, nouveau résumé). Le contexte de prompt (F15) s'applique au
 résumé, comme au pipeline complet.
+
+**Travail par section (F14)** : à l'import, l'utilisateur peut pré-écouter
+le média et couper début/fin (sliders ; défaut = fichier complet). FFmpeg
+ne convertit que la section en WAV 16 kHz mono (`-ss début` +
+`-t fin-début`) — ASR et LLM ne traitent que cette section. Les segments,
+émis relatifs à la section (0-based), sont **décalés de `début`** par le
+pipeline : ils restent alignés sur le fichier source (le lecteur de la
+page Résultat, F13, qui lit le source, saute au bon endroit sans
+modification). La section est consignée (`records.section_start` /
+`section_end`, bornes absolues du fichier source) et **préservée** par le
+re-résumé (F16). `run_pipeline` reçoit `section_start` / `section_end`
+(`Option<f64>` ; `None`/`0` = valeur par défaut) ; le pipeline borne à la
+durée sonde (`effective_section`) : sentinelle `end = 0` = « jusqu'à la
+fin », section vide (fin ≤ début) = erreur claire.
 
 ### 5.1 Prompt LLM (à affiner — cf. F4)
 
@@ -345,6 +366,10 @@ tldl-e2e download <id> <url>                 # F11 : vrai moteur models::downloa
 tldl-e2e delete <id>                        # F11 : vrai moteur models::delete
 tldl-e2e history                            # F7 : storage save/list/get/search
 tldl-e2e devices                            # F10 : devices ggml + gpu::resolve
+tldl-e2e section [fichier_média] [dossier_ffmpeg]
+                                             # F14 : coupe de section (2 passes :
+                                             # fichier complet + section [20 %, 80 %])
+TLDL_E2E_ASR=<id>                           # id du modèle ASR du mode section (sinon small)
 ```
 
 Le `dossier_ffmpeg` est **optionnel** : `media.rs` s'auto-localise

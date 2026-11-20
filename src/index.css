@@ -670,6 +670,16 @@ audio {
   margin-top: 16px;
 }
 
+/* F14 : pré-écoute à l'import + sliders de coupe début/fin. */
+.section-card input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.section-card .row {
+  margin-top: 10px;
+}
+
 .segment.clickable {
   cursor: pointer;
 }

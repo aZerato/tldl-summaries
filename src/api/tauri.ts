@@ -29,6 +29,11 @@ export const runPipeline = (
   language: string,
   /** Id du contexte de prompt (F15) ; `null` = contexte par défaut. */
   contextId: number | null,
+  /** F14 : section traitée (s, bornes absolues du fichier source) ;
+   *  `null` = fichier complet. */
+  sectionStart: number | null,
+  /** F14 : fin de section ; `null` ou `0` = jusqu'à la fin du fichier. */
+  sectionEnd: number | null,
 ) =>
   invoke<PipelineOutput>("run_pipeline", {
     input,
@@ -36,6 +41,8 @@ export const runPipeline = (
     llmModel,
     language,
     contextId: contextId === null ? null : contextId,
+    sectionStart: sectionStart === null ? null : sectionStart,
+    sectionEnd: sectionEnd === null ? null : sectionEnd,
   });
 
 export const listModels = () => invoke<ModelInfo[]>("list_models");
@@ -142,6 +149,8 @@ export function toOutput(r: HistoryRecord): PipelineOutput {
     deviceNote: null,
     file: r.file,
     durationSecs: r.durationSecs,
+    sectionStart: r.sectionStart,
+    sectionEnd: r.sectionEnd,
   };
 }
 

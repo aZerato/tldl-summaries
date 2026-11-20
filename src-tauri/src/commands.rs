@@ -30,6 +30,10 @@ pub async fn run_pipeline(
     language: String,
     // Id du contexte de prompt (F15) ; `None` = contexte par défaut.
     context_id: Option<i64>,
+    // F14 : section traitée (secondes, bornes absolues du fichier source).
+    // `None`/valeur nulle = fichier complet (le pipeline borne à la sonde).
+    section_start: Option<f64>,
+    section_end: Option<f64>,
 ) -> Result<pipeline::PipelineOutput, String> {
     // F15 : résolution du contexte (nom pour la consignation, instructions
     // pour le prompt **LLM — le résumé**, jamais la transcription) avant le
@@ -73,6 +77,10 @@ pub async fn run_pipeline(
     let dev = gpu::resolve(use_gpu);
     let input_copy = input.clone();
     let res = tauri::async_runtime::spawn_blocking(move || {
+        // F14 : section traitée — `None` = valeur par défaut (le pipeline
+        // borne à la sonde : 0 = début, 0 = « tout » → fichier complet).
+        let section_start = section_start.unwrap_or(0.0);
+        let section_end = section_end.unwrap_or(0.0);
         let opts = pipeline::PipelineOptions {
             asr_model,
             llm_model,
@@ -85,6 +93,8 @@ pub async fn run_pipeline(
                 "GPU demandé mais non détecté — exécution sur CPU.".to_string()
             }),
             context_instructions,
+            section_start,
+            section_end,
         };
         pipeline::run(&input_copy, &opts, &mut |p| {
             let _ = app.emit(
@@ -118,6 +128,9 @@ pub async fn run_pipeline(
             &output.transcription.text,
             &transcription_json,
             &output.summary_markdown,
+            // F14 : la section traitée (bornes absolues du source).
+            output.section_start,
+            output.section_end,
         )
         .map_err(|e| format!("historique : {e}"))?;
     }
@@ -211,6 +224,10 @@ pub async fn re_summarize(
             &rec.transcription,
             rec.transcription_json.as_deref().unwrap_or_default(),
             &summary_markdown,
+            // F14 : la section de l'enregistrement d'origine est préservée
+            // (le re-résumé ne re-tranche pas).
+            rec.section_start,
+            rec.section_end,
         )
         .map_err(|e| format!("historique : {e}"))?
     };
@@ -536,6 +553,10 @@ mod tests {
             transcription_json: json.map(str::to_string),
             summary_markdown: String::new(),
             folder_id: None,
+            // F14 : section complète (0 / durée) — le re-résumé ne
+            // re-tranche pas, il préserve ces bornes.
+            section_start: 0.0,
+            section_end: 42.0,
         }
     }
 
