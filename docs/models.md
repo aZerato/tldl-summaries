@@ -37,7 +37,7 @@ Langue : détection auto avec biais FR ; option « forcer FR ».
 - Modèles gérés **directement par l'app** (catalogue GGUF, F6/F11) :
   pas de démon externe (ADR-003)
 
-## 3. Profils (préréglages du menu — F6)
+## 3. Profils (préréglages de la page « Configuration » — F6)
 
 | Profil | Machine cible | ASR | LLM | Device | RAM min |
 |---|---|---|---|---|---|

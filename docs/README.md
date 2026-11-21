@@ -43,7 +43,8 @@ _Dernière mise à jour : 21/11/2026_
   (processus unique, 100 % portable) · FFmpeg embarqué · cible machine
   « Équilibrée » 16 Go
 - **MVP** : import média → conversion vidéo→audio → transcription → résumé,
-  double-vue (transcription + résumé), menu des modèles, récupération des
+  double-vue (transcription + résumé), page « Configuration »,
+  récupération des
   modèles (opt-in)
 - **UI** : refonte visuelle du 19/11/2026 — fond sombre quasi inchangé,
   accent orange unique (`src/index.css`)

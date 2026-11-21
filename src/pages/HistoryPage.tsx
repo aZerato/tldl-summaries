@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import ConfirmDialog from "../components/ConfirmDialog";
 import {
   createFolder,
   deleteFolder,
@@ -102,6 +102,10 @@ export default function HistoryPage({ onOpen }: Props) {
   const actionsRef = useRef({ doMove, doMoveGroup, open });
   // F19 : création rapide d'un dossier (nom en cours de saisie).
   const [newName, setNewName] = useState("");
+  // Suppressions (pas de `confirm` natif — pas fiable sous le webview
+  // Tauri 2) : `toDelete`/`toDeleteFolder` posés = boîte ouverte.
+  const [toDelete, setToDelete] = useState<HistoryRecord | null>(null);
+  const [toDeleteFolder, setToDeleteFolder] = useState<Folder | null>(null);
 
   const searching = query.trim().length > 0;
 
@@ -159,18 +163,14 @@ export default function HistoryPage({ onOpen }: Props) {
       .finally(() => setOpening(null));
   }
 
-  async function remove(r: HistoryRecord) {
-    // Confirmation native (plugin dialog) — gate *avant* la suppression.
-    const ok = await confirm(
-      `Supprimer « ${baseName(r.file)} » de l'historique ?`,
-      {
-        title: "Supprimer de l'historique",
-        kind: "warning",
-        okLabel: "Supprimer",
-        cancelLabel: "Annuler",
-      },
-    );
-    if (!ok) return;
+  function remove(r: HistoryRecord) {
+    setToDelete(r);
+  }
+
+  async function doRemove() {
+    const r = toDelete;
+    if (!r) return;
+    setToDelete(null);
     try {
       await deleteHistory(r.id);
       refresh();
@@ -338,18 +338,15 @@ export default function HistoryPage({ onOpen }: Props) {
   }
 
   // F19 : suppression d'un dossier — ses résultats repassent « Sans
-  // dossier » (jamais supprimés) ; confirmation native.
-  async function removeFolder(f: Folder) {
-    const ok = await confirm(
-      `Supprimer le dossier « ${f.name} » ? Ses résultats repassent « Sans dossier » (jamais supprimés).`,
-      {
-        title: "Supprimer le dossier",
-        kind: "warning",
-        okLabel: "Supprimer",
-        cancelLabel: "Annuler",
-      },
-    );
-    if (!ok) return;
+  // dossier » (jamais supprimés) ; confirmation in-app.
+  function removeFolder(f: Folder) {
+    setToDeleteFolder(f);
+  }
+
+  async function doDeleteFolder() {
+    const f = toDeleteFolder;
+    if (!f) return;
+    setToDeleteFolder(null);
     try {
       await deleteFolder(f.id);
       if (view === f.id) setView(null);
@@ -651,6 +648,23 @@ export default function HistoryPage({ onOpen }: Props) {
         >
           {ghostLabel}
         </div>
+      )}
+
+      {toDelete && (
+        <ConfirmDialog
+          title="Supprimer de l'historique"
+          message={`Supprimer « ${baseName(toDelete.file)} » de l'historique ?`}
+          onConfirm={doRemove}
+          onCancel={() => setToDelete(null)}
+        />
+      )}
+      {toDeleteFolder && (
+        <ConfirmDialog
+          title="Supprimer le dossier"
+          message={`Supprimer le dossier « ${toDeleteFolder.name} » ? Ses résultats repassent « Sans dossier » (jamais supprimés).`}
+          onConfirm={doDeleteFolder}
+          onCancel={() => setToDeleteFolder(null)}
+        />
       )}
     </div>
   );

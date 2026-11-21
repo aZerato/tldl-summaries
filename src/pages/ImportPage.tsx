@@ -494,7 +494,7 @@ export default function ImportPage({
       {error && <div className="error">{error}</div>}
       <p className="muted hint">
         Premier lancement : les modèles ASR/LLM doivent être en place
-        (menu Modèles).
+        (page « Configuration »).
       </p>
     </div>
   );

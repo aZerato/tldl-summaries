@@ -20,7 +20,7 @@ local : ni Internet, ni cloud.
 | C3 | **Sobre mais performant** : modèles quantifiés, GPU optionnel, CPU viable |
 | C4 | **Hors ligne** : aucun réseau requis (hors téléchargement des modèles, opt-in) |
 | C5 | **Vidéo gérée nativement** : conversion vidéo → audio dans l'application (FFmpeg) |
-| C6 | **Interface** : import de fichier, double-vue (transcription / résumé), menu des modèles |
+| C6 | **Interface** : import de fichier, double-vue (transcription / résumé), page « Configuration » |
 
 ## 3. Stack
 
@@ -155,7 +155,7 @@ jamais concurrents (§5).
   transcription longue (≈ 3-4k tokens,
   `GGML_ASSERT(n_tokens_all <= n_batch)`). Validé dans l'app : résumé
   CPU d'un fichier de 15 min.
-## 6. Menu « Modèles »
+## 6. Page « Configuration »
 
 Spécification : features.md F6. Contenu : ASR (modèle, quantification,
 device), LLM (modèle, quantification, température, contexte),

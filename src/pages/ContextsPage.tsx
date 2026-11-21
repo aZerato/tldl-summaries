@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import ConfirmDialog from "../components/ConfirmDialog";
 import {
   deleteContext,
   listContexts,
@@ -21,6 +21,9 @@ export default function ContextsPage() {
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
   const [saving, setSaving] = useState(false);
+  // Suppression : `toDelete` posé = la boîte de confirmation est ouverte
+  // (pas de `confirm` natif — pas fiable sous le webview Tauri 2).
+  const [toDelete, setToDelete] = useState<PromptContext | null>(null);
   // F15 : ancre du formulaire (l'édition y remonte — voir `edit`).
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -67,19 +70,14 @@ export default function ContextsPage() {
     }
   }
 
-  async function remove(c: PromptContext) {
-    // Confirmation native (plugin dialog) : gate *avant* la suppression —
-    // `window.confirm` n'est pas fiable sous le webview Tauri 2.
-    const ok = await confirm(
-      `Supprimer le contexte « ${c.name} » ?`,
-      {
-        title: "Supprimer le contexte",
-        kind: "warning",
-        okLabel: "Supprimer",
-        cancelLabel: "Annuler",
-      },
-    );
-    if (!ok) return;
+  function remove(c: PromptContext) {
+    setToDelete(c);
+  }
+
+  async function doRemove() {
+    const c = toDelete;
+    if (!c) return;
+    setToDelete(null);
     try {
       await deleteContext(c.id);
       if (editId === c.id) reset();
@@ -189,6 +187,15 @@ export default function ContextsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {toDelete && (
+        <ConfirmDialog
+          title="Supprimer le contexte"
+          message={`Supprimer le contexte « ${toDelete.name} » ?`}
+          onConfirm={doRemove}
+          onCancel={() => setToDelete(null)}
+        />
       )}
     </div>
   );

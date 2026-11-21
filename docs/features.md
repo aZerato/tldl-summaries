@@ -72,7 +72,7 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - Résumé : rendu Markdown, bouton copier (export = F8).
 - **Critères** : rechargement après redémarrage de l'app (via F7).
 
-### F6 — Menu « Modèles » (configuration) 📋
+### F6 — Page « Configuration » 📋
 
 - ASR : modèle, quantification, device CPU/GPU.
 - LLM : modèle, quantification, température, contexte.
@@ -118,9 +118,9 @@ plein texte, réouverture d'un résultat, suppression d'une entrée.
   résumé, suppression par ligne), recherche plein texte (fichier /
   transcription / résumé, debounce 300 ms, groupée), réouverture en
   double-vue (F5), **suppression d'une entrée** (bouton « Supprimer » +
-  confirmation native `@tauri-apps/plugin-dialog` — `window.confirm`
-  n'est pas fiable sous le webview Tauri 2 ; commande `delete_history`
-  → `storage::delete_record`).
+  boîte de confirmation in-app — le `confirm` natif n'est pas fiable
+  sous le webview Tauri 2 ; commande `delete_history` →
+  `storage::delete_record`).
 - Migration SQLite idempotente (`transcription_json`) ; E2E
   `tldl-e2e history` (va-et-retour factice dans un dossier temporaire,
   jamais l'historique réel).
@@ -296,7 +296,7 @@ résumés selon les contextes).
   enregistrement ; la page les liste (« Résumés de ce fichier » :
   contexte, date, LLM, device — le résultat affiché est repéré
   `current`, clic = l'ouvrir sans recalcul via `get_history`), bouton
-  « Supprimer » par ligne (confirmation native, `delete_history`) ;
+  « Supprimer » par ligne (confirmation in-app, `delete_history`) ;
   le pied de page indique le contexte + la date du résumé affiché.
 - **`toOutput` partagé** : `toOutput(r: HistoryRecord): PipelineOutput`
   dans `src/api/tauri.ts` (réutilisé par l'historique F7 + la
@@ -338,7 +338,7 @@ d'un dossier vers un autre.
   `list_history_folder` (vue d'un dossier, plus récents en premier).
 - **UI (historique)** : panneau latéral « Dossiers » — « Sans
   dossier » + un item par dossier (compte de lignes, « Suppr. » avec
-  confirmation native — ses résultats repassent « Sans dossier »),
+  confirmation in-app — ses résultats repassent « Sans dossier »),
   création rapide (le nouveau dossier s'ouvre) ; la liste affiche le
   contenu du dossier ouvert (défaut : « Sans dossier ») ; les lignes
   sont **glissables** (drag & drop par **pointeur** —
