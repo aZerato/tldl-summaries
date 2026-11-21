@@ -134,6 +134,16 @@ export default function ImportPage({
     // F14 : la coupe repart sur le fichier complet pour chaque nouveau fichier.
     setSecStart(null);
     setSecEnd(null);
+    // F1 : validation de l'extension à l'import — un format non pris en
+    // charge donne un message clair (pas de plant, pas de ffprobe sur un
+    // non-média qui échouerait sans message lisible).
+    if (!isSupportedExt(p)) {
+      const e = extOf(p);
+      setError(
+        `Format non pris en charge${e ? ` (${e})` : ""}. Formats acceptés : ${SUPPORTED_EXT.join(", ")}.`,
+      );
+      return;
+    }
     try {
       const i = await probeMedia(p);
       setInfo(i);
@@ -264,7 +274,9 @@ export default function ImportPage({
               ? `${info.format} · ${formatDuration(
                   info.durationSecs,
                 )}${info.hasVideo ? " · vidéo (convertie en audio)" : ""}`
-              : "lecture du fichier…"}
+              : isSupportedExt(path)
+                ? "lecture du fichier…"
+                : "format non pris en charge"}
           </div>
         </div>
       )}
@@ -465,6 +477,7 @@ export default function ImportPage({
           className="btn primary"
           disabled={
             !path ||
+            !isSupportedExt(path) ||
             busy ||
             info?.hasAudio === false ||
             // F16 : un résultat existe — trancher d'abord (re-résumer sans
@@ -485,6 +498,30 @@ export default function ImportPage({
       </p>
     </div>
   );
+}
+
+// F1 : les 11 extensions acceptées (audio + vidéo) — miroir des filtres du
+// sélecteur et du critère « les 11 extensions ci-dessus acceptées ».
+const SUPPORTED_EXT = [
+  "wav",
+  "mp3",
+  "m4a",
+  "flac",
+  "ogg",
+  "opus",
+  "mp4",
+  "mov",
+  "mkv",
+  "webm",
+  "avi",
+];
+function extOf(p: string): string {
+  const m = p.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : "";
+}
+function isSupportedExt(p: string): boolean {
+  const e = extOf(p);
+  return e !== "" && SUPPORTED_EXT.includes(e);
 }
 
 function formatDuration(secs: number): string {

@@ -15,7 +15,12 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 ### F1 — Import d'un fichier audio ou vidéo 📋
 - Glisser-déposer + sélecteur de fichier
 - Audio : wav, mp3, m4a, flac, ogg, opus — Vidéo : mp4, mov, mkv, webm, avi
-- Validation à l'import (format inconnu → message clair, pas de plant)
+- Validation à l'import (format inconnu → message clair, pas de plant) —
+  **en place** : l'extension est validée dès le drop/sélecteur (les 11
+  extensions) ; un format non pris en charge → message clair (« Format non
+  pris en charge (md). Formats acceptés : … ») + bouton « Lancer la
+  synthèse » désactivé, pas de `ffprobe` sur un non-média (dont le stderr
+  serait vide avec `-v quiet`)
 - Un fichier à la fois (file d'attente = 💡 post-MVP)
 - **Glisser-déposer** : événement natif Tauri 2 `onDragDropEvent` (chemins
   absolus, `dragDropEnabled: true`) — dans le webview Tauri 2, les `drop`

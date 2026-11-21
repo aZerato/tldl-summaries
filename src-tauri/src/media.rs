@@ -84,11 +84,24 @@ fn run(cmd: &mut Command) -> Result<String, String> {
         Ok(out) if out.status.success() => {
             Ok(String::from_utf8_lossy(&out.stdout).into_owned())
         }
-        Ok(out) => Err(format!(
-            "{} a échoué : {}",
-            cmd.get_program().to_string_lossy(),
-            String::from_utf8_lossy(&out.stderr).trim()
-        )),
+        Ok(out) => {
+            // `-v quiet` : un échec sans détail (ex. sonde d'un non-média)
+            // laisse `stderr` vide — on ne termine pas sur « a échoué : ».
+            let stderr_str = String::from_utf8_lossy(&out.stderr);
+            let stderr = stderr_str.trim();
+            Err(if stderr.is_empty() {
+                format!(
+                    "{} a échoué (aucun message).",
+                    cmd.get_program().to_string_lossy()
+                )
+            } else {
+                format!(
+                    "{} a échoué : {}",
+                    cmd.get_program().to_string_lossy(),
+                    stderr
+                )
+            })
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(
             "FFmpeg introuvable : posez les binaires embarqués sous \
              assets/ffmpeg/ (ou installez-le sur le PATH)."

@@ -34,8 +34,8 @@ _Dernière mise à jour : 19/11/2026_
 ## État du projet
 
 - Phase : **post-MVP** — MVP (F1→F6 + F11) fait (ASR/LLM branchés, E2E
-  vertes) ; F7/F10/F11/F13/F15/F16 code en place (UI + noyau + tests +
-  E2E), F15/F16 à valider dans l'app
+  vertes) ; F7/F10/F11/F13/F14/F15/F16/F19 code en place (UI + noyau +
+  tests + E2E), F10/F13/F14/F15/F16/F19 **validés dans l'app**
 - **Choix arrêtés** : Tauri 2 + Rust · whisper.cpp · **llama.cpp intégré**
   (processus unique, 100 % portable) · FFmpeg embarqué · cible machine
   « Équilibrée » 16 Go
