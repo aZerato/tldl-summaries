@@ -206,6 +206,12 @@ Mécanique :
   Qwen2.5, GGUF sans template), le template prédéfini `"chatml"` ; sinon
   prompt tel quel (chemin legacy). Buffer 2× le message (reco. du header) ;
   si le résultat le déborde : réallocation + re-apply.
+- **`n_batch` du contexte LLM** (shim C) : posé à `n_ctx` — le prompt
+  entier doit tenir en un seul `llama_decode` ; une transcription longue
+  (ex. 15 min ≈ 3-4k tokens) déborde le défaut 512 et provoquait
+  `GGML_ASSERT(n_tokens_all <= n_batch)` (plant du binaire `tldl-llm` sur
+  un fichier de 15 min dans l'app). Validé dans l'app : résumé CPU d'un
+  fichier de 15 min passe.
 
 Vérifié (cible GNU, Qwen2.5-1.5B Q4_K_M) : ASR small → transcription, puis
 `tldl-llm` génère le Markdown (Synthèse / Points clés / Décisions / Actions
@@ -413,14 +419,17 @@ get → search plein texte, puis nettoyage.
 
 Mode `llm` (carry LLM, fix chat template) : passe **réelle** du LLM — vraie
 génération sur le vrai modèle (`TLDL_E2E_LLM`, défaut `qwen25-7b-q4`) avec
-le contexte « Résume en 10 phrases maximum. » → `llm::summarize` (spawne
-le binaire `tldl-llm` réel, même dossier que celui-ci). Vérifie l'exigence
+le contexte « Résume en 10 phrases maximum. », sur une transcription
+**longue** (≈ 700 tokens — au-delà du `n_batch` 512, cf. §5.2) →
+`llm::summarize` (spawne le binaire `tldl-llm` réel, même dossier que
+celui-ci). Vérifie l'exigence
 dure : **EOS naturel** (la génération s'arrête avant `max_tokens`),
 **pas de méta-préambule** (« voici le résumé »…), **au plus 10 phrases**
 (heuristique sur la ponctuation terminale) — le filet `truncate_repetition`
 reste en place (§5.2). Modèle absent → ignorée (exit 0), comme les autres
-modes. Vérifié (`qwen25-7b-q4`, CPU) : **EOS naturel à 105/1024 tokens**,
-6 phrases, sans méta-préambule — le fix chat template tient sur le 7B.
+modes. Vérifié (`qwen25-7b-q4`, CPU) : **EOS naturel à 190/1024 tokens**,
+10 phrases (la limite), sans méta-préambule — le fix chat template tient
+sur le 7B, et le prompt long (≈ 700 tokens) passe (`n_batch = n_ctx`).
 
 > Outil annexe `tldl-manifest` (`src/manifest_tool.rs`) : diagnostic/patch du
 > manifest PE d'un binaire Windows (vérifie le v6, `dump` de l'arborescence

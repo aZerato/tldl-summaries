@@ -56,7 +56,9 @@
 //! `llm::summarize` (lance le binaire `tldl-llm` réel, même dossier que
 //! celui-ci). Vérifie : EOS naturel (arrêt avant `max_tokens`), pas de
 //! méta-préambule (« voici le résumé » …), au plus 10 phrases (heuristique
-//! [.!?]). Modèle absent → ignorée (exit 0), comme les autres modes.
+//! [.!?]). Transcription de test **longue** (≈ 700 tokens — au-delà du
+//! `n_batch` 512, cf. régression `GGML_ASSERT(n_tokens_all <= n_batch)`).
+//! Modèle absent → ignorée (exit 0), comme les autres modes.
 //!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
@@ -1150,7 +1152,10 @@ fn run_section_e2e(rest: &[String]) {
 /// Vraie génération sur le vrai modèle (`TLDL_E2E_LLM`, défaut
 /// `qwen25-7b-q4`) : contexte « Résume en 10 phrases maximum. » →
 /// `llm::summarize` (lance le binaire `tldl-llm` réel, même dossier que
-/// celui-ci). Exigence dure : EOS naturel (la génération s'arrête avant
+/// celui-ci), sur une transcription de test **longue** (≈ 700 tokens —
+/// bien au-delà du `n_batch` 512 : régression du `GGML_ASSERT` sur un
+/// fichier de 15 min dans l'app). Exigence dure : EOS naturel (la génération
+/// s'arrête avant
 /// `max_tokens`), pas de méta-préambule, au plus 10 phrases (heuristique
 /// [.!?]) — le filet anti-boucle `truncate_repetition` est en place
 /// (cf. `llm/mod.rs`). Modèle absent → ignorée (exit 0), comme les autres
@@ -1169,6 +1174,9 @@ fn run_llm_e2e() {
         return;
     }
 
+    // Transcription longue (≈ 700 tokens — bien au-delà du `n_batch` 512,
+    // cf. régression `GGML_ASSERT(n_tokens_all <= n_batch)` sur un fichier
+    // de 15 min) : plusieurs chapitres de réunion, tous distincts.
     let text = "Nous avons passé en revue la feuille de route du \
                troisième trimestre. L'équipe a validé la migration vers le \
                nouveau prestataire de paiement, avec une échéance fixée à la \
@@ -1178,7 +1186,52 @@ fn run_llm_e2e() {
                mois pour le comité de pilotage. Aucun budget n'a été voté, en \
                attendant les premières factures. La prochaine étape est la \
                mise en place des tests d'intégration. Le point d'avancement \
-               aura lieu toutes les deux semaines.";
+               aura lieu toutes les deux semaines. \
+               On a aussi fait le point sur la bascule des environnements \
+               de recette. L'infrastructure doit être dupliquée avant la fin \
+               du sprint, et les variables de configuration seront \
+               centralisées dans un dépôt à part. Deux ingénieurs seront \
+               dédiés à la bascule, avec un retour d'expérience à chaque \
+               étape. En cas de régression bloquante, l'équipe peut revenir \
+               en arrière sans impact pour les clients. \
+               Le volet monitoring a été détaillé : les alertes critiques \
+               partiront vers la garde, et les seuils de latence seront \
+               revus chaque mois. Un tableau de bord sera tenu à jour pour \
+               le comité, avec la qualité, le volume et les incidents. Les \
+               valeurs de référence seront fixées d'ici la fin du mois, à \
+               partir des mesures réelles de production. \
+               Sur la donnée, l'export historique sera géré par un script de \
+               migration, et la double écriture restera en place le temps \
+               d'un cycle complet. La conformité RGPD a été rappelée : les \
+               données personnelles seront pseudonymisées avant tout \
+               transfert. Un audit sera demandé au prestataire avant \
+               l'ouverture de la production. \
+               Le plan de communication interne sera envoyé à l'ensemble des \
+               équipes avant la fin de semaine, avec les consignes de prise \
+               en main. Les équipes métier auront une session de formation de \
+               deux heures, animée par les responsables de projet. Les \
+               supports de formation seront mis en ligne dans l'intranet, et \
+               chaque participant recevra le replay. \
+               Les risques ont été passés en revue : le principal reste la \
+               dépendance au certificat du prestataire, et un plan B est \
+               prévu avec un sous-traitant de repli. Le calendrier sera tenu \
+               au plus près, avec un point hebdomadaire entre les deux \
+               points de pilotage. La charge de la décision revient au comité \
+               de direction, qui se prononcera avant la fin du mois. \
+               Côté organisation, chaque équipe remonte ses charges réelles \
+               chaque vendredi, et les arbitrages seront notés dans le \
+               suivi de sprint. Les indicateurs de qualité seront suivis sur \
+               l'ensemble du trimestre, avec un objectif de disponibilité à \
+               fixer d'ici la fin du mois. Les écarts seront discutés en \
+               revue de production, et les actions correctives feront l'objet \
+               d'un suivi nominatif. \
+               Pour conclure, les prochaines étapes sont arrêtées : le spike \
+               technique démarre lundi, la démo est fixée à la fin du mois, \
+               et le comité de pilotage se réunira après la bascule. Les \
+               points de blocage remontent directement au chef de projet, \
+               qui consolide l'ensemble avant chaque point d'avancement. La \
+               prochaine feuille de route sera arbitrée au premier \
+               trimestre suivant, en fonction des résultats mesurés.";
     let tr = Transcription {
         text: text.into(),
         segments: Vec::new(),

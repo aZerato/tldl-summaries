@@ -52,8 +52,11 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
   d'entraînement du modèle (shim C — cf. architecture.md §5.2) : le
   modèle *répond* au lieu de compléter — pas de méta-préambule (« voici
   le résumé… »), l'EOS sort naturellement, la contrainte « 10 phrases
-  maximum » tient ; passe réelle E2E `tldl-e2e llm` (vrai modèle, CPU) :
-  EOS naturel à 105/1024 tokens, 6 phrases, sans méta-préambule
+  maximum » tient ; passe réelle E2E `tldl-e2e llm` (vrai modèle, CPU,
+  transcription **longue** ≈ 700 tokens) : EOS naturel à 190/1024 tokens,
+  10 phrases, sans méta-préambule ; les prompts longs passent — `n_batch`
+  posé à `n_ctx` (§5.2), validé dans l'app (résumé CPU d'un fichier de
+  15 min)
 - **Critères** : hors ligne ; < 60 s pour 10 min d'audio sur profil
   « Équilibré » (benchmark F12 pour arrêter)
 
@@ -154,7 +157,7 @@ bascule CPU si absent (C3 « GPU optionnel, CPU viable »).
 Matrice modèle × device × durée (5 / 10 / 30 min) ; les résultats mesurés
 alimentent models.md (remplacent les estimations).
 
-### F13 — Lecteur audio intégré ⏳
+### F13 — Lecteur audio intégré ✅
 Lecteur audio intégré à la page Résultat, synchronisé aux segments.
 - **Lecture de la source** : le lecteur lit le fichier *source* (l'intermédiaire
   WAV est supprimé après le pipeline) via le **asset protocol** Tauri —
@@ -166,9 +169,10 @@ Lecteur audio intégré à la page Résultat, synchronisé aux segments.
   `onTimeUpdate` → `activeIndex` ; clic sur un segment = `seekTo` + play
 - **SegmentList** : segments cliquables + surlignage du segment actif
 - **Statut** : code en place (Rust `file` + asset-protocol + player/sync
-  frontend) ; frontend `tsc`+`vite` vert ; à valider dans l'app
+  frontend) ; frontend `tsc`+`vite` vert ; validé dans l'app (lecteur du
+  source synchronisé aux segments — confirmé par l'utilisateur)
 
-### F14 - Travail par section ⏳
+### F14 - Travail par section ✅
 À l'import, travailler soit sur le fichier complet, soit sur une section
 (Pré-écoute + coupe du début et de la fin par sliders) — la coupe est
 **optionnelle** (défaut = fichier complet).
@@ -197,10 +201,12 @@ Lecteur audio intégré à la page Résultat, synchronisé aux segments.
   section vide (fin ≤ début) = erreur claire
 - **Statut** : code en place (Rust + frontend + E2E `tldl-e2e section`
   vert : section [20 %, 80 %] sur `jfk.wav` — bornes reportées, segments
-  dans la section, texte plus court que le complet) ; à valider dans
-  l'app (pré-écoute + sliders à l'import)
+  dans la section, texte plus court que le complet) ; **validé dans
+  l'app** : à l'import, pré-écoute + sliders (Début/Fin) → coupe —
+  la transcription ne porte que sur la section (l'ASR — donc le LLM —
+  ne voit que ce qui a été converti dans `[début, fin]`)
 
-### F15 - Contextes de prompt ⏳
+### F15 - Contextes de prompt ✅
 L'utilisateur choisit ou crée un contexte de résumé avant de
 demander une transcription ; favoris pour la réutilisation rapide ; page
 dédicée à la création / gestion.
@@ -223,9 +229,10 @@ dédicée à la création / gestion.
   de page (contexte + date du résumé affiché)
 - **Stockage** : table SQLite `contexts` (même base que l'historique — F7)
 - **Statut** : code en place (storage + prompt + UI + E2E `tldl-e2e
-  contexts`) ; à valider dans l'app
+  contexts`) ; validé dans l'app (sélecteur « Contexte de résumé » à
+  l'import + page Contextes — confirmé par l'utilisateur)
 
-### F16 - Eviter la transcription d'un fichier ⏳
+### F16 - Eviter la transcription d'un fichier ✅
 Si un fichier a déjà été analysé, l'utilisateur est averti au choix du chemin :
 il peut **re-résumer sans re-transcrire**, forcer une nouvelle analyse, ou
 être redirigé vers le résultat existant (plusieurs résumés peuvent coexister
@@ -276,7 +283,7 @@ pour un même fichier — transcription unique, résumés selon les contextes).
   re-résumé depuis le résultat : UI frontend (id traçé dans `App`, pas
   de commande nouvelle) ; résumés par contexte : liste + pied de page
   (commandes `get_history` / `history_for_file` existantes) ;
-  frontend vert ; à valider dans l'app
+  frontend vert ; validé dans l'app (confirmé par l'utilisateur)
 
 ### F17 - Permettre d'avoir un mode avancée pour connecter des modèles via URL/IP
 Permettre à l'utilisateur de pointer sur un provider local ou web IA (mais à ses risques).

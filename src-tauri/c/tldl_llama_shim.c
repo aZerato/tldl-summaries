@@ -49,7 +49,11 @@ int tldl_llama_load(const char * path, int32_t n_ctx, int32_t n_gpu_layers,
 
     struct llama_context_params cp = llama_context_default_params();
     cp.n_ctx = (uint32_t)n_ctx;
-    cp.n_batch = 512;
+    /* Le prompt entier doit tenir en un seul `llama_decode` : une
+     * transcription longue (ex. 15 min ≈ 3-4k tokens) déborde le défaut
+     * 512 → `GGML_ASSERT(n_tokens_all <= n_batch)`. Le prompt tient dans
+     * `n_ctx`, donc `n_batch = n_ctx` couvre le cas complet. */
+    cp.n_batch = (uint32_t)n_ctx;
     struct llama_context * ctx = llama_init_from_model(model, cp);
     if (ctx == NULL) {
         llama_model_free(model);
