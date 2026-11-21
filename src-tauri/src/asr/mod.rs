@@ -46,9 +46,11 @@ pub struct AsrConfig {
 mod ffi {
     use std::os::raw::{c_char, c_int};
 
-    /// Poignée opaque (côté shim C).
+    /// Poignée opaque (côté shim C). Le champ `u8` (non vide) est requis :
+    /// un ZST n'est pas FFI-safe — le type n'existe que derrière
+    /// `*mut`/`*const TldlWhisper` (jamais déréférencé par valeur).
     #[repr(transparent)]
-    pub struct TldlWhisper;
+    pub struct TldlWhisper(u8);
 
     // Lien par `#[link]` (et non `build.rs`) : les directives du build script
     // s'appliqueraient à *tous* les cibles du paquet, et le binaire
