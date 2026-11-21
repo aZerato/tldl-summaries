@@ -120,7 +120,7 @@ Package JSON complet (traçabilité : modèles, versions, date).
 ### F9 — Séparation des intervenants (diarisation) 💡
 Plus lourde (pyannote / 3D-Speaker) ; à évaluer après le MVP.
 
-### F10 — Accélération GPU ⏳
+### F10 — Accélération GPU ✅
 CUDA / Metal / Vulkan (whisper.cpp + LLM), détection auto,
 bascule CPU si absent (C3 « GPU optionnel, CPU viable »).
 - **Build** : la variable `TLDL_GPU` (`cpu` défaut | `cuda` | `metal` |
@@ -133,7 +133,12 @@ bascule CPU si absent (C3 « GPU optionnel, CPU viable »).
 - **Détection** : `src/gpu.rs` interroge le registre de devices du ggml de
   whisper.cpp (lié dans l'app) — le device CPU est toujours présent, un
   GPU/iGPU n'apparaît que si la build a activé le backend et que la
-  machine en possède un
+  machine en possède un. Nom affiché/consigné : on lit
+  `ggml_backend_dev_description` (le **vrai nom** lisible) — le processeur
+  pour le CPU (ex. « Intel(R) Core(TM) i9-14900K »), le GPU pour un CUDA
+  (ex. « NVIDIA GeForce RTX 4070 Ti SUPER ») — et on retombe sur
+  `ggml_backend_dev_name` (le slug « CPU » / « CUDA0 ») si `description`
+  est vide
 - **Bascule** : `gpu::resolve(use_gpu)` → premier GPU/iGPU détecté si
   demandé, sinon CPU + note (`DeviceResolution { name, kind, use_gpu,
   n_gpu_layers, fallback }`) ; le `n_gpu_layers` (-1 = GPU toutes les
@@ -149,9 +154,10 @@ bascule CPU si absent (C3 « GPU optionnel, CPU viable »).
   GPU détecté (`CUDA0`), `resolve(true)` → GPU sans bascule CPU ;
   `tldl-llm` avec `n_gpu_layers = -1` → 29/29 couches offloadées sur le
   GPU (modèle 4,1 Go + KV + compute sur `CUDA0`, génération CUDA Graph) ;
-  reste la validation dans l'app (Réglages → « Accélération » : la 4070
-  est listée, toggle ON → pipeline sur le GPU, device affiché sur le
-  résultat et consigné `records.device`)
+  **validé dans l'app** (build CUDA) : Réglages → « Accélération » — la
+  4070 listée sous son **vrai nom** (description ggml), le CPU sous son
+  vrai processeur, toggle ON → pipeline sur le GPU, device affiché sur le
+  résultat et consigné `records.device` (confirmé par l'utilisateur)
 
 ### F12 — Benchmark & cibles perf 📋
 Matrice modèle × device × durée (5 / 10 / 30 min) ; les résultats mesurés

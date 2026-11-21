@@ -54,12 +54,24 @@ pub fn list_devices() -> Vec<DeviceInfo> {
             3 => "accel",
             _ => "autre",
         };
+        // Le nom lisible d'un device ggml est dans `description` : le vrai
+        // nom du processeur pour le CPU (ex. « Intel(R) Core(TM) i9-14900K »),
+        // le nom du GPU pour un CUDA/iGPU (ex. « NVIDIA GeForce RTX 4070 Ti
+        // SUPER ») ; `name` n'y est que le slug backend (« CPU », « CUDA0 »).
+        // On préfère `description` quand elle est fournie, sinon on retombe
+        // sur `name` (ex. « CPU » si le nom du processeur est inconnu).
         let name = cstr(unsafe { ffi::ggml_backend_dev_name(d) });
+        let description = cstr(unsafe { ffi::ggml_backend_dev_description(d) });
+        let display = if !description.is_empty() {
+            description
+        } else {
+            name
+        };
         out.push(DeviceInfo {
-            name: if name.is_empty() {
+            name: if display.is_empty() {
                 format!("{kind} {i}")
             } else {
-                name
+                display
             },
             kind: kind.to_string(),
         });
@@ -122,6 +134,7 @@ mod ffi {
         pub fn ggml_backend_dev_count() -> usize;
         pub fn ggml_backend_dev_get(index: usize) -> *const c_void;
         pub fn ggml_backend_dev_name(d: *const c_void) -> *const c_char;
+        pub fn ggml_backend_dev_description(d: *const c_void) -> *const c_char;
         pub fn ggml_backend_dev_type(d: *const c_void) -> c_int;
     }
 }
