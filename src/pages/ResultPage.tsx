@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import ConfirmDialog from "../components/ConfirmDialog";
 import Progress from "../components/Progress";
 import SegmentList from "../components/SegmentList";
 import {
@@ -40,6 +40,12 @@ interface Props {
 
 function fmtDate(epoch: number): string {
   return new Date(epoch * 1000).toLocaleString();
+}
+
+function fmtTime(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 export default function ResultPage({
@@ -81,6 +87,9 @@ export default function ResultPage({
   // F19 : dossiers de rangement — le sélecteur ici est l'alternative au
   // glisser-déposer de la page Historique.
   const [folders, setFolders] = useState<Folder[]>([]);
+  // Suppression d'une variante de résumé : `toDelete` posé = boîte
+  // ouverte (pas de `confirm` natif — pas fiable sous le webview Tauri 2).
+  const [toDelete, setToDelete] = useState<HistoryRecord | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,22 +215,18 @@ export default function ResultPage({
   }
 
   // F15/F16 : suppression d'une variante de résumé de ce fichier
-  // (confirmation native, comme l'historique F7). Si l'enregistrement
+  // (confirmation in-app, comme l'historique F7). Si l'enregistrement
   // supprimé est celui affiché : on ouvre le plus récent restant — ou
   // l'on garde le résultat en mémoire s'il n'en reste aucun (re-résumé
   // désactivé : plus d'enregistrement sous-jacent).
-  async function removeSummary(rec: HistoryRecord) {
+  function removeSummary(rec: HistoryRecord) {
     if (resuming || opening !== null) return;
-    const ok = await confirm(
-      `Supprimer le résumé « ${rec.contextName || "contexte par défaut"} » ?`,
-      {
-        title: "Supprimer le résumé",
-        kind: "warning",
-        okLabel: "Supprimer",
-        cancelLabel: "Annuler",
-      },
-    );
-    if (!ok) return;
+    setToDelete(rec);
+  }
+
+  async function doDeleteSummary() {
+    const rec = toDelete;
+    if (!rec) return;
     try {
       await deleteHistory(rec.id);
       const rows = await historyForFile(result.file);
@@ -461,8 +466,26 @@ export default function ResultPage({
           </>
         )}
         ASR : {result.asrModel} · LLM : {result.llmModel} · Device :{" "}
-        {result.device} · {Math.round(result.durationSecs)} s de média
+        {result.device} · {Math.round(result.durationSecs)} s de média ·{" "}
+        {result.sectionStart > 0 || result.sectionEnd < result.durationSecs ? (
+          <span title="Section traitée — les segments sont décalés du début de section pour rester alignés sur le fichier source">
+            section {fmtTime(result.sectionStart)} → {fmtTime(result.sectionEnd)}
+          </span>
+        ) : (
+          "fichier complet"
+        )}
       </div>
+
+      {toDelete && (
+        <ConfirmDialog
+          title="Supprimer le résumé"
+          message={`Supprimer le résumé « ${
+            toDelete.contextName || "contexte par défaut"
+          } » ?`}
+          onConfirm={doDeleteSummary}
+          onCancel={() => setToDelete(null)}
+        />
+      )}
     </div>
   );
 }

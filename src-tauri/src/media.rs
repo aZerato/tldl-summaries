@@ -84,11 +84,24 @@ fn run(cmd: &mut Command) -> Result<String, String> {
         Ok(out) if out.status.success() => {
             Ok(String::from_utf8_lossy(&out.stdout).into_owned())
         }
-        Ok(out) => Err(format!(
-            "{} a échoué : {}",
-            cmd.get_program().to_string_lossy(),
-            String::from_utf8_lossy(&out.stderr).trim()
-        )),
+        Ok(out) => {
+            // `-v quiet` : un échec sans détail (ex. sonde d'un non-média)
+            // laisse `stderr` vide — on ne termine pas sur « a échoué : ».
+            let stderr_str = String::from_utf8_lossy(&out.stderr);
+            let stderr = stderr_str.trim();
+            Err(if stderr.is_empty() {
+                format!(
+                    "{} a échoué (aucun message).",
+                    cmd.get_program().to_string_lossy()
+                )
+            } else {
+                format!(
+                    "{} a échoué : {}",
+                    cmd.get_program().to_string_lossy(),
+                    stderr
+                )
+            })
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(
             "FFmpeg introuvable : posez les binaires embarqués sous \
              assets/ffmpeg/ (ou installez-le sur le PATH)."
@@ -137,12 +150,30 @@ pub fn probe(path: &str) -> Result<MediaInfo, String> {
     })
 }
 
-/// Convertit n'importe quel média (audio ou vidéo) en WAV PCM 16 kHz mono —
-/// le format natif de whisper.cpp.
-pub fn to_wav_16k(input: &Path, output: &Path) -> Result<(), String> {
+/// Convertit le média — ou une **section** `[start, end]` du fichier source
+/// (F14, travail par section) — en WAV PCM 16 kHz mono, le format natif de
+/// whisper.cpp.
+///
+/// `start`/`end` : bornes **absolues** dans le fichier source (secondes).
+/// `start = 0` et `end` = durée totale = fichier complet. La conversion ne
+/// produit que la section (pas le reste du fichier) : c'est ce que
+/// transcrit l'ASR, et les horodatages qu'il émet sont donc relatifs à la
+/// section (0-based) — le pipeline les décale de `start` (cf. `pipeline`).
+pub fn to_wav_16k(input: &Path, output: &Path, start: f64, end: f64) -> Result<(), String> {
     let mut cmd = Command::new(resolve("ffmpeg"));
-    cmd.args(["-hide_banner", "-nostdin", "-i"]);
+    cmd.args(["-hide_banner", "-nostdin"]);
+    // Saut d'entrée : positionne la lecture sur `start` (rapide, précis
+    // pour l'audio) sans décoder l'avant de la section.
+    if start > 0.0 {
+        cmd.args(["-ss", &format!("{start:.3}")]);
+    }
+    cmd.args(["-i"]);
     cmd.arg(input);
+    // Durée de la section : borne la production de la WAV sur `[start, end]`.
+    let dur = (end - start).max(0.0);
+    if dur > 0.0 {
+        cmd.args(["-t", &format!("{dur:.3}")]);
+    }
     cmd.args(["-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y"]);
     cmd.arg(output);
     run(&mut cmd)?;

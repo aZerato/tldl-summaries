@@ -4,6 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
+  convertFileSrc,
   historyForFile,
   listContexts,
   probeMedia,
@@ -56,6 +57,11 @@ export default function ImportPage({
   const [existing, setExisting] = useState<HistoryRecord[] | null>(null);
   // F16 : l'utilisateur a choisi de forcer une nouvelle analyse.
   const [forced, setForced] = useState(false);
+  // F14 : coupe début/fin (sliders) — `null` = position par défaut
+  // (fichier complet). La section porte sur le **traitement** (ASR + LLM ne
+  // voient que la section), pas seulement l'affichage.
+  const [secStart, setSecStart] = useState<number | null>(null);
+  const [secEnd, setSecEnd] = useState<number | null>(null);
 
   async function loadContexts() {
     try {
@@ -125,6 +131,19 @@ export default function ImportPage({
     // F16 : l'état « forcée » ne vaut que pour le dernier fichier choisi.
     setExisting(null);
     setForced(false);
+    // F14 : la coupe repart sur le fichier complet pour chaque nouveau fichier.
+    setSecStart(null);
+    setSecEnd(null);
+    // F1 : validation de l'extension à l'import — un format non pris en
+    // charge donne un message clair (pas de plant, pas de ffprobe sur un
+    // non-média qui échouerait sans message lisible).
+    if (!isSupportedExt(p)) {
+      const e = extOf(p);
+      setError(
+        `Format non pris en charge${e ? ` (${e})` : ""}. Formats acceptés : ${SUPPORTED_EXT.join(", ")}.`,
+      );
+      return;
+    }
     try {
       const i = await probeMedia(p);
       setInfo(i);
@@ -184,6 +203,9 @@ export default function ImportPage({
         config.llmModel,
         config.language,
         contextId,
+        // F14 : section choisie (sliders) ; `null` = fichier complet.
+        secStart,
+        secEnd,
       );
       // F15/F16 : le pipeline vient de consigner un nouvel enregistrement —
       // c'est le plus récent pour le fichier (historique trié, plus récents
@@ -252,7 +274,72 @@ export default function ImportPage({
               ? `${info.format} · ${formatDuration(
                   info.durationSecs,
                 )}${info.hasVideo ? " · vidéo (convertie en audio)" : ""}`
-              : "lecture du fichier…"}
+              : isSupportedExt(path)
+                ? "lecture du fichier…"
+                : "format non pris en charge"}
+          </div>
+        </div>
+      )}
+
+      {/* F14 : pré-écoute du média source (protocole asset, cf. F13) +
+          coupe début/fin par sliders — la coupe porte sur le **traitement**
+          (ASR + LLM ne voient que la section) ; défaut = fichier complet. */}
+      {info !== null && path !== null && (
+        <div className="file-card section-card">
+          <div className="file-name">Pré-écoute</div>
+          <audio className="player" controls src={convertFileSrc(path)} />
+          <div className="row">
+            <label className="field" style={{ flex: 1, margin: 0 }}>
+              Début
+              <input
+                type="range"
+                min={0}
+                max={info.durationSecs}
+                step={0.1}
+                value={secStart ?? 0}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  // Ne pas dépasser la fin courante (clamped, pas d'inversion).
+                  setSecStart(Math.min(v, secEnd ?? info.durationSecs));
+                }}
+              />
+            </label>
+            <label className="field" style={{ flex: 1, margin: 0 }}>
+              Fin
+              <input
+                type="range"
+                min={0}
+                max={info.durationSecs}
+                step={0.1}
+                value={secEnd ?? info.durationSecs}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  // Ne pas remonter sous le début courant.
+                  setSecEnd(Math.max(v, secStart ?? 0));
+                }}
+              />
+            </label>
+          </div>
+          <div className="row">
+            <span className="muted">
+              Section : {fmtTime(secStart ?? 0)} →{" "}
+              {fmtTime(secEnd ?? info.durationSecs)} (
+              {Math.max(
+                0,
+                (secEnd ?? info.durationSecs) - (secStart ?? 0),
+              ).toFixed(1)}{" "}
+              s traitées)
+            </span>
+            <button
+              className="btn"
+              disabled={secStart === null && secEnd === null}
+              onClick={() => {
+                setSecStart(null);
+                setSecEnd(null);
+              }}
+            >
+              Tout le fichier
+            </button>
           </div>
         </div>
       )}
@@ -390,6 +477,7 @@ export default function ImportPage({
           className="btn primary"
           disabled={
             !path ||
+            !isSupportedExt(path) ||
             busy ||
             info?.hasAudio === false ||
             // F16 : un résultat existe — trancher d'abord (re-résumer sans
@@ -406,14 +494,44 @@ export default function ImportPage({
       {error && <div className="error">{error}</div>}
       <p className="muted hint">
         Premier lancement : les modèles ASR/LLM doivent être en place
-        (menu Modèles).
+        (page « Configuration »).
       </p>
     </div>
   );
+}
+
+// F1 : les 11 extensions acceptées (audio + vidéo) — miroir des filtres du
+// sélecteur et du critère « les 11 extensions ci-dessus acceptées ».
+const SUPPORTED_EXT = [
+  "wav",
+  "mp3",
+  "m4a",
+  "flac",
+  "ogg",
+  "opus",
+  "mp4",
+  "mov",
+  "mkv",
+  "webm",
+  "avi",
+];
+function extOf(p: string): string {
+  const m = p.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : "";
+}
+function isSupportedExt(p: string): boolean {
+  const e = extOf(p);
+  return e !== "" && SUPPORTED_EXT.includes(e);
 }
 
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
   const s = Math.round(secs % 60);
   return m > 0 ? `${m} min ${s.toString().padStart(2, "0")} s` : `${s} s`;
+}
+
+function fmtTime(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }

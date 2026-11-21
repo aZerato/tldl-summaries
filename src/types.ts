@@ -39,6 +39,12 @@ export interface PipelineOutput {
   /** Chemin du fichier source (F13) — lecteur audio de la page résultat. */
   file: string;
   durationSecs: number;
+  /** F14 : début de la section traitée, dans le fichier source (s) ;
+   *  `0` si le fichier complet a été traité. */
+  sectionStart: number;
+  /** F14 : fin de la section traitée, dans le fichier source (s) ;
+   *  `= durationSecs` si le fichier complet a été traité. */
+  sectionEnd: number;
 }
 
 /** Device de calcul ggml (F10). */
@@ -92,6 +98,11 @@ export interface HistoryRecord {
   summaryMarkdown: string;
   /** Dossier de rangement (F19) ; `null` = « Sans dossier ». */
   folderId: number | null;
+  /** F14 : début de la section traitée, dans le fichier source (s) ;
+   *  `0` si le fichier complet a été traité. */
+  sectionStart: number;
+  /** F14 : fin de la section traitée, dans le fichier source (s). */
+  sectionEnd: number;
 }
 
 /** Dossier de rangement (F19) : les résultats sont rangés dans au plus un

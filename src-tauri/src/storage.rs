@@ -66,6 +66,12 @@ pub struct HistoryRecord {
     pub summary_markdown: String,
     /// Dossier de rangement (F19) ; `None` = « Sans dossier ».
     pub folder_id: Option<i64>,
+    /// F14 : début de la section traitée, dans le fichier source (s).
+    /// `0.0` sur les lignes écrites avant la migration (= fichier complet).
+    pub section_start: f64,
+    /// F14 : fin de la section traitée, dans le fichier source (s).
+    /// `= duration_secs` sur les lignes pré-migration (= fichier complet).
+    pub section_end: f64,
 }
 
 pub struct Storage {
@@ -133,6 +139,18 @@ impl Storage {
                 .execute_batch("ALTER TABLE records ADD COLUMN folder_id INTEGER")
                 .map_err(|e| e.to_string())?;
         }
+        // F14 : section traitée. Sur les lignes pré-migration : `0` et
+        // `duration_secs` (= fichier complet) — re-dérivables des segments.
+        if !cols.contains(&"section_start".to_string()) {
+            conn
+                .execute_batch("ALTER TABLE records ADD COLUMN section_start REAL NOT NULL DEFAULT 0")
+                .map_err(|e| e.to_string())?;
+        }
+        if !cols.contains(&"section_end".to_string()) {
+            conn
+                .execute_batch("ALTER TABLE records ADD COLUMN section_end REAL NOT NULL DEFAULT 0")
+                .map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
 
@@ -153,7 +171,9 @@ impl Storage {
 
     /// Consigne un traitement réussi ; renvoie l'id de la ligne.
     /// `device` : device de calcul utilisé (F10) ; `context_name` : nom du
-    /// contexte de prompt (F15), vide si défaut.
+    /// contexte de prompt (F15), vide si défaut. `section_start`/`section_end`
+    /// : bornes absolues de la section traitée, dans le fichier source (F14) ;
+    /// `0`/`duration_secs` = fichier complet.
     pub fn save(
         &self,
         file: &str,
@@ -166,11 +186,13 @@ impl Storage {
         transcription: &str,
         transcription_json: &str,
         summary_markdown: &str,
+        section_start: f64,
+        section_end: f64,
     ) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO records (file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO records (file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, section_start, section_end)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     file,
                     created,
@@ -181,7 +203,9 @@ impl Storage {
                     context_name,
                     transcription,
                     transcription_json,
-                    summary_markdown
+                    summary_markdown,
+                    section_start,
+                    section_end
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -193,7 +217,7 @@ impl Storage {
         let mut st = self
             .conn
             .prepare(
-                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
+                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id, section_start, section_end
                  FROM records
                  ORDER BY id DESC
                  LIMIT ?1",
@@ -214,7 +238,7 @@ impl Storage {
         let mut st = self
             .conn
             .prepare(
-                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
+                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id, section_start, section_end
                  FROM records
                  WHERE id = ?1",
             )
@@ -235,7 +259,7 @@ impl Storage {
         let mut st = self
             .conn
             .prepare(
-                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
+                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id, section_start, section_end
                  FROM records
                  WHERE file = ?1
                  ORDER BY id DESC",
@@ -257,7 +281,7 @@ impl Storage {
         let mut st = self
             .conn
             .prepare(
-                r"SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
+                r"SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id, section_start, section_end
                  FROM records
                  WHERE file LIKE ?1 ESCAPE '\'
                     OR transcription LIKE ?1 ESCAPE '\'
@@ -419,7 +443,7 @@ impl Storage {
         let mut st = self
             .conn
             .prepare(
-                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id
+                "SELECT id, file, created, duration_secs, asr_model, llm_model, device, context_name, transcription, transcription_json, summary_markdown, folder_id, section_start, section_end
                   FROM records
                   WHERE folder_id IS ?2
                   ORDER BY id DESC
@@ -562,6 +586,9 @@ fn row_to_record(r: &rusqlite::Row) -> rusqlite::Result<HistoryRecord> {
         transcription_json: r.get(9)?,
         summary_markdown: r.get(10)?,
         folder_id: r.get(11)?,
+        // F14 : section traitée (bornes absolues du fichier source).
+        section_start: r.get(12)?,
+        section_end: r.get(13)?,
     })
 }
 
@@ -631,6 +658,8 @@ mod tests {
                 "premier texte",
                 json,
                 "résumé A",
+                0.0,
+                10.0,
             )
             .expect("save a");
         let b = st
@@ -645,6 +674,8 @@ mod tests {
                 "deuxième texte",
                 json,
                 "",
+                0.0,
+                20.0,
             )
             .expect("save b");
 
@@ -691,6 +722,8 @@ mod tests {
                 "troisième texte",
                 json,
                 "",
+                0.0,
+                12.0,
             )
             .expect("save c (même fichier que a)");
         let by_file = st.find_by_file("a.wav").expect("find a.wav");
@@ -773,6 +806,8 @@ mod tests {
                 text,
                 json,
                 "",
+                0.0,
+                10.0,
             )
         };
         let a = mk("a.wav", "Contexte par défaut", "premier texte").expect("save a");
@@ -835,6 +870,7 @@ mod tests {
 
         // Suppression : les enregistrements du dossier repassent « Sans
         // dossier » (jamais supprimés) ; double suppression = erreur.
+        // (F14 : voir `roundtrip_section` pour le va-et-retour de la section.)
         st.delete_folder(f1).expect("delete f1");
         assert_eq!(st.list_folders().expect("folders 2").len(), 1);
         // a, c1, c2 sont « Sans dossier » ; b est toujours rangé dans f2.
@@ -847,6 +883,68 @@ mod tests {
         assert_eq!(st.list_in_folder(None, 50).expect("sans 4").len(), 4);
         assert!(st.get(a).expect("a").folder_id.is_none());
         assert!(st.get(b).expect("b").folder_id.is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// F14 : la section traitée (bornes absolues du fichier source) est
+    /// consignée et relue — `0`/`duration` = fichier complet.
+    #[test]
+    fn roundtrip_section() {
+        let dir = std::env::temp_dir().join("tldl-storage-section-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let st = Storage::open(&dir).expect("ouverture");
+
+        // Fichier complet (0 / durée) et section [30, 60] d'un fichier de 100 s.
+        let full = st
+            .save(
+                "full.wav",
+                now_epoch(),
+                100.0,
+                "small",
+                "qwen25-7b-q4",
+                "CPU",
+                "Contexte par défaut",
+                "texte complet",
+                r#"{"text":"t","segments":[],"language":"fr"}"#,
+                "résumé complet",
+                0.0,
+                100.0,
+            )
+            .expect("save full");
+        let part = st
+            .save(
+                "part.wav",
+                now_epoch(),
+                100.0,
+                "small",
+                "qwen25-7b-q4",
+                "CPU",
+                "Contexte par défaut",
+                "texte de section",
+                r#"{"text":"t","segments":[],"language":"fr"}"#,
+                "résumé de section",
+                30.0,
+                60.0,
+            )
+            .expect("save part");
+
+        // Relecture : les bornes reviennent telles quelles.
+        let g = st.get(full).expect("get full");
+        assert_eq!(g.section_start, 0.0);
+        assert_eq!(g.section_end, 100.0);
+        let p = st.get(part).expect("get part");
+        assert_eq!(p.section_start, 30.0);
+        assert_eq!(p.section_end, 60.0);
+
+        // La liste porte aussi la section.
+        let rows = st.list(50).expect("list");
+        assert_eq!(rows.len(), 2);
+        let by_id = |id| rows.iter().find(|r| r.id == id).unwrap();
+        assert_eq!(by_id(full).section_start, 0.0);
+        assert_eq!(by_id(full).section_end, 100.0);
+        assert_eq!(by_id(part).section_start, 30.0);
+        assert_eq!(by_id(part).section_end, 60.0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

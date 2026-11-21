@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import ConfirmDialog from "../components/ConfirmDialog";
 import {
   cancelModelDownload,
   deleteModel,
@@ -29,6 +30,8 @@ export default function SettingsPage({ config, onChange }: Props) {
   const [saved, setSaved] = useState(false);
   const [dl, setDl] = useState<Dl | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Suppression d'un modèle : `toDelete` posé = boîte ouverte.
+  const [toDelete, setToDelete] = useState<ModelInfo | null>(null);
 
   useEffect(() => {
     listModels()
@@ -86,7 +89,15 @@ export default function SettingsPage({ config, onChange }: Props) {
   }
 
   function doDelete(m: ModelInfo) {
-    if (!window.confirm(`Supprimer « ${m.name} » de models/ ?`)) return;
+    // Boîte de confirmation in-app (pas de `window.confirm` — pas fiable
+    // sous le webview Tauri 2) : `toDelete` posé = la boîte est ouverte.
+    setToDelete(m);
+  }
+
+  function confirmDelete() {
+    const m = toDelete;
+    if (!m) return;
+    setToDelete(null);
     deleteModel(m.id)
       .then(() => listModels().then(setModels).catch(() => undefined))
       .catch((err) => setError(String(err)));
@@ -137,9 +148,9 @@ export default function SettingsPage({ config, onChange }: Props) {
 
   return (
     <div className="page">
-      <h2>Modèles</h2>
+      <h2>Configuration</h2>
       <p className="muted">
-        Les modèles sont stockés localement, téléchargement opt-in (F11).
+        Les modèles sont stockés localement, téléchargement opt-in.
         Hors ligne : déposez les fichiers GGUF/.bin à la main dans le dossier
         <code> models/</code> de l'app.
       </p>
@@ -193,7 +204,7 @@ export default function SettingsPage({ config, onChange }: Props) {
               <span className="model-name">{m.name}</span>
               <span className="muted">
                 {(m.sizeMb / 1024).toFixed(1).replace(".", ",")} Go ·
-                ~{m.ramGb} Go
+                ~{m.ramGb} Go RAM
                 {m.available ? "" : " · à télécharger"}
               </span>
               {m.isDefault && <span className="badge">défaut</span>}
@@ -229,9 +240,13 @@ export default function SettingsPage({ config, onChange }: Props) {
               save({ ...config, temperature: Number(e.target.value) })
             }
           />
+          <span className="muted">
+            Plus c'est haut, plus le résumé varie (risque de répétitions) ;
+            plus c'est bas, plus il est stable et factuel.
+          </span>
         </label>
         <label className="field">
-          Profil (rappel — docs/models.md)
+          Profil
           <select
             value={config.profile}
             onChange={(e) =>
@@ -245,12 +260,16 @@ export default function SettingsPage({ config, onChange }: Props) {
             <option value="equilibre">Équilibré — 16 Go</option>
             <option value="puissant">Puissant — 32 Go / GPU</option>
           </select>
+          <span className="muted">
+            Configuration conseillée selon la RAM de la machine — indicatif
+            : ne modifie pas les modèles choisis ci-dessus.
+          </span>
         </label>
       </section>
 
       <section className="card">
-        <h3>Accélération (F10)</h3>
-        <label className="field">
+        <h3>Accélération</h3>
+        <label className="field field-check">
           <input
             type="checkbox"
             checked={config.useGpu}
@@ -272,6 +291,14 @@ export default function SettingsPage({ config, onChange }: Props) {
           </div>
         )}
       </section>
+      {toDelete && (
+        <ConfirmDialog
+          title="Supprimer le modèle"
+          message={`Supprimer « ${toDelete.name} » de models/ ?`}
+          onConfirm={confirmDelete}
+          onCancel={() => setToDelete(null)}
+        />
+      )}
       {saved && <p className="muted">Enregistré ✓</p>}
     </div>
   );

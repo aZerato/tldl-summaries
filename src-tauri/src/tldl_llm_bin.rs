@@ -69,6 +69,13 @@ extern "C" {}
 #[link(name = "stdc++")]
 extern "C" {}
 
+// Apple : libc++ (les objets ggml/llama référencent `operator new`,
+// `__cxa_*`, …). Le build script émet aussi `dylib=c++` (l'app) ; la
+// mesure double est inoffensive (un `-lc++` en double).
+#[cfg(target_os = "macos")]
+#[link(name = "c++")]
+extern "C" {}
+
 // ggml-cpu (llama.cpp) sonde le nom de la CPU dans le registre
 // (HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0) → advapi32.dll.
 #[cfg(target_os = "windows")]

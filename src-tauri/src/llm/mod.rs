@@ -167,8 +167,9 @@ fn paragraphs(text: &str) -> Vec<String> {
 /// Coupe une **boucle de répétition** du modèle (le résumé re-récité, en le
 /// *paraphrasant*, jusqu'à `max_tokens` sans EOS).
 ///
-/// Le modèle « complète » (pas de chat template) et, sur certaines entrées,
-/// re-synthétise le même contenu au lieu d'émettre l'EOS. La pénalité de
+/// Même avec le chat template (appliqué côté shim C, cf. `engine.rs`),
+/// sur certaines entrées le modèle re-synthétise le même contenu au lieu
+/// d'émettre l'EOS. La pénalité de
 /// répétition du sampling (cf. `engine.rs` / shim C) est *tokenique* : elle
 /// casse une boucle de répétition *mot à mot*, pas une boucle **paraphrasée**
 /// (les tokens diffèrent à chaque cycle). On détecte donc la boucle **après**
@@ -244,8 +245,8 @@ pub fn summarize(
     let model_file = crate::models::model_path(crate::models::ModelKind::Llm, &cfg.model);
     if !model_file.exists() {
         return Err(format!(
-            "modèle LLM introuvable : {} — téléchargez-le (F11) ou déposez \
-             le GGUF dans models/",
+            "modèle LLM introuvable : {} — téléchargez-le ou déposez le \
+             GGUF dans models/",
             model_file.display()
         ));
     }

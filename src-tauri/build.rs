@@ -15,7 +15,10 @@
 //!     a) MSVC (Build Tools, workload « C++ »), ou
 //!     b) MinGW/WinLibs (GCC) — ex. winget `BrechtSanders.WinLibs.POSIX.MSVCRT`,
 //!        le binaire `g++.exe` du toolchain sur le PATH, ou `TLDL_MINGW_DIR`
-//!        pointant sur son dossier `bin`.
+//!        pointant sur son dossier `bin`, ou
+//!     c) Apple (macOS, build sur le Mac — C2) : Xcode Command Line Tools
+//!        (`xcode-select --install`) — `/usr/bin/c++` (clang++) ; CMake via
+//!        `brew install cmake`.
 //!
 //! Rust : cible `x86_64-pc-windows-gnu` (toolchain `stable-x86_64-pc-windows-gnu`,
 //! `rustup override set` dans ce dossier) — ou `x86_64-pc-windows-msvc` si MSVC.
@@ -30,6 +33,9 @@ enum Toolchain {
     Msvc,
     /// MinGW/WinLibs : le dossier `bin` du toolchain (gcc, g++, ninja…).
     Gnu,
+    /// Apple (macOS) : `c++` système (`/usr/bin/c++`, clang++) — Xcode
+    /// Command Line Tools.
+    Apple,
 }
 
 /// Gate de build du backend GPU (F10, C3 « GPU optionnel, CPU viable ») :
@@ -109,7 +115,7 @@ fn main() {
     // La vraie build se fait sur une machine outillée.
     let toolchain = find_toolchain();
     if toolchain.is_none() || find_cmake().is_none() {
-        println!("cargo:warning=toolchain C++ absente (CMake et/ou cl.exe / g++) : compilation de whisper.cpp ignorée (cargo check uniquement).");
+        println!("cargo:warning=toolchain C++ absente (CMake et/ou cl.exe / g++ / c++) : compilation de whisper.cpp ignorée (cargo check uniquement).");
         return;
     }
     let toolchain = toolchain.unwrap();
@@ -170,11 +176,18 @@ fn main() {
         build_llama(&llama_src, &llama_build_dir, &toolchain, gpu)
             .expect("build CMake de llama.cpp en échec");
 
-    // Rust ne lie pas la stdlib C++ : on la demande sur la cible GNU.
-    // (Valeure « dylib » : partagée par les deux moteurs, sans risque —
-    //  les archives statiques n'en sont tirées que si référencées.)
+    // Rust ne lie pas la stdlib C++ : on la demande sur la cible GNU
+    // (`stdc++`) et sur Apple (`c++`, libc++). Valeurs « dylib » :
+    // partagées par les deux moteurs, sans risque — les archives
+    // statiques n'en tirent les symboles que si référencées.
     if toolchain == Toolchain::Gnu {
         println!("cargo:rustc-link-lib=dylib=stdc++");
+    }
+    if toolchain == Toolchain::Apple {
+        // Mesure double avec le `#[link(name = "c++")]` de
+        // `src/tldl_llm_bin.rs` (binaire `tldl-llm`) ; un `-lc++` en
+        // double est inoffensif.
+        println!("cargo:rustc-link-lib=dylib=c++");
     }
 
     // F10 : le dossier `lib` du toolkit CUDA — les `#[link]` des import
@@ -207,7 +220,7 @@ fn build_llama(
     gpu: Gpu,
 ) -> Result<Vec<String>, String> {
     let cmake = find_cmake()
-        .ok_or("CMake introuvable. Installez-le (`winget install Kitware.CMake`).")?;
+        .ok_or("CMake introuvable. Installez-le (Windows : `winget install Kitware.CMake` ; macOS : `brew install cmake`).")?;
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let out_dir = env::var("OUT_DIR").unwrap();
     let manifest = Path::new(&manifest_dir);
@@ -451,7 +464,7 @@ fn build_whisper(
     gpu: Gpu,
 ) -> Result<(), String> {
     let cmake = find_cmake()
-        .ok_or("CMake introuvable. Installez-le (`winget install Kitware.CMake`) — requis pour compiler whisper.cpp.")?;
+        .ok_or("CMake introuvable. Installez-le (Windows : `winget install Kitware.CMake` ; macOS : `brew install cmake`) — requis pour compiler whisper.cpp.")?;
 
     let cfg = |name, val| {
         let mut a = vec![String::from("-D")];
@@ -547,6 +560,15 @@ fn run_cmake(cmake: &Path, args: &[String], what: &str, tc: &Toolchain) -> Resul
     Ok(())
 }
 
+/// Séparateur de `PATH` : `;` (Windows), `:` (macOS).
+fn path_sep() -> char {
+    if env::consts::OS == "macos" {
+        ':'
+    } else {
+        ';'
+    }
+}
+
 /// CMake : variable `TLDL_CMAKE`, PATH, puis l'emplacement winget standard.
 fn find_cmake() -> Option<std::path::PathBuf> {
     if let Ok(p) = env::var("TLDL_CMAKE") {
@@ -557,7 +579,7 @@ fn find_cmake() -> Option<std::path::PathBuf> {
     }
     let exe = format!("cmake{}", std::env::consts::EXE_SUFFIX);
     if let Ok(path) = env::var("PATH") {
-        for dir in path.split(';') {
+        for dir in path.split(path_sep()) {
             let c = Path::new(&dir).join(&exe);
             if c.exists() {
                 return Some(c);
@@ -583,7 +605,7 @@ fn gnu_candidates() -> Vec<std::path::PathBuf> {
     }
     let exe = format!("x86_64-w64-mingw32-g++{}", std::env::consts::EXE_SUFFIX);
     if let Ok(path) = env::var("PATH") {
-        for dir in path.split(';') {
+        for dir in path.split(path_sep()) {
             let d = Path::new(&dir).to_path_buf();
             if d.join(&exe).exists() {
                 v.push(d);
@@ -642,12 +664,21 @@ fn gnu_gpp() -> Option<std::path::PathBuf> {
     None
 }
 
-/// Un toolchain C++ utilisable existe-t-il (MSVC ou MinGW) ?
+/// Un toolchain C++ utilisable existe-t-il (Apple, MSVC ou MinGW) ?
 fn find_toolchain() -> Option<Toolchain> {
+    // Apple (macOS) : le compilateur système `/usr/bin/c++` (clang++) —
+    // Xcode Command Line Tools. La build se fait sur le Mac (C2) ; pas de
+    // Ninja (le générateur CMake par défaut, Unix Makefiles, suffit).
+    if env::consts::OS == "macos" {
+        if Path::new("/usr/bin/c++").exists() {
+            return Some(Toolchain::Apple);
+        }
+        return None;
+    }
     // MSVC : cl.exe sur le PATH (Developer Command Prompt) ou une MSVC v14x en place.
     let cl = format!("cl{}", std::env::consts::EXE_SUFFIX);
     if let Ok(path) = env::var("PATH") {
-        for dir in path.split(';') {
+        for dir in path.split(path_sep()) {
             if Path::new(&dir).join(&cl).exists() {
                 return Some(Toolchain::Msvc);
             }

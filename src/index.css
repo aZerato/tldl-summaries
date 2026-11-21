@@ -500,6 +500,15 @@ pre.markdown {
   color: var(--muted);
 }
 
+/* `.field` en ligne : checkbox + libellé sur une seule ligne. */
+.field-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  cursor: pointer;
+}
+
 select,
 input[type="range"],
 input[type="radio"],
@@ -670,6 +679,16 @@ audio {
   margin-top: 16px;
 }
 
+/* F14 : pré-écoute à l'import + sliders de coupe début/fin. */
+.section-card input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.section-card .row {
+  margin-top: 10px;
+}
+
 .segment.clickable {
   cursor: pointer;
 }
@@ -826,4 +845,41 @@ audio {
 body.tldl-dnd {
   user-select: none;
   cursor: grabbing;
+}
+
+/* ── Boîte de confirmation (suppressions) ─────────────────────────── */
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100; /* au-dessus du ghost de glisser-déposer (1000) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 14, 17, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.confirm-card {
+  width: min(460px, calc(100vw - 32px));
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+.confirm-card > h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.confirm-card > p {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.confirm-card .row {
+  justify-content: flex-end;
 }

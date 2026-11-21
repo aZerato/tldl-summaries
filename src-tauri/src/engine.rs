@@ -62,7 +62,10 @@ impl Engine {
         }
     }
 
-    /// Génère depuis un prompt UTF-8 ; `progress` : (tokens produits, max).
+    /// Génère depuis un prompt UTF-8 — le message `user` du dialogue : le
+    /// shim applique le chat template du modèle (celui du GGUF, ou "chatml"
+    /// si le vocabulaire est de type ChatML — ex. Qwen2.5) avant
+    /// tokenisation (fix, carry LLM). `progress` : (tokens produits, max).
     pub fn generate(
         &self,
         prompt: &str,

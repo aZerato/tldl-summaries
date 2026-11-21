@@ -33,7 +33,14 @@ pub struct PipelineOutput {
     /// Chemin du fichier source (F13) : lecture dans le lecteur de la page
     /// résultat (protocole asset Tauri).
     pub file: String,
+    /// Durée du **fichier source** (sonde) — pas celle de la section.
     pub duration_secs: f64,
+    /// F14 : début de la section traitée, dans le fichier source (s).
+    /// `0` si le fichier complet a été traité.
+    pub section_start: f64,
+    /// F14 : fin de la section traitée, dans le fichier source (s).
+    /// `= duration_secs` si le fichier complet a été traité.
+    pub section_end: f64,
 }
 
 pub struct PipelineOptions {
@@ -53,6 +60,11 @@ pub struct PipelineOptions {
     /// LLM** (la transcription reste fidèle à l'audio) ; vide = contexte
     /// « rencontre ».
     pub context_instructions: String,
+    /// F14 : section traitée — bornes **absolues** dans le fichier source
+    /// (secondes). `section_start = 0` et `section_end` = durée totale =
+    /// fichier complet.
+    pub section_start: f64,
+    pub section_end: f64,
 }
 
 /// Exécute le pipeline complet. `progress` est appelé à chaque étape.
@@ -73,12 +85,35 @@ pub fn run(
         return Err("aucune piste audio détectée dans ce fichier".into());
     }
 
+    // F14 : section traitée — bornes absolues dans le source, bornées à la
+    // durée sonde. Valeurs nulles / hors bornes = repli « fichier complet ».
+    let (section_start, section_end) =
+        effective_section(opts.section_start, opts.section_end, info.duration_secs)
+            .ok_or_else(|| "section vide : le début doit précéder la fin".to_string())?;
+
     // 2) → 4) sous dossier temporaire, nettoyé systématiquement (C1/C4).
     let work = temp_dir()?;
     let wav = work.join("audio-16k.wav");
-    let res = run_inner(input, &wav, info, opts, progress);
+    let res = run_inner(input, &wav, info, opts, section_start, section_end, progress);
     let _ = std::fs::remove_dir_all(&work);
     res
+}
+
+/// F14 : réduit la section demandée aux bornes du fichier et valide qu'elle
+/// est non vide. `end = 0` est le **sentinelle « tout »** (fin = durée du
+/// fichier) ; `start = 0` = début du fichier. Renvoie `(début, fin)` bornés,
+/// ou `None` si la section est vide / incohérente (fin ≤ début).
+fn effective_section(start: f64, end: f64, duration: f64) -> Option<(f64, f64)> {
+    let s = start.clamp(0.0, duration);
+    let e = if end <= 0.0 {
+        duration
+    } else {
+        end.clamp(0.0, duration)
+    };
+    if e <= s {
+        return None;
+    }
+    Some((s, e))
 }
 
 fn run_inner(
@@ -86,24 +121,32 @@ fn run_inner(
     wav: &std::path::Path,
     info: media::MediaInfo,
     opts: &PipelineOptions,
+    section_start: f64,
+    section_end: f64,
     progress: &mut dyn FnMut(&Progress),
 ) -> Result<PipelineOutput, String> {
-    // 2) Conversion WAV PCM 16 kHz mono (C5 : vidéo → audio dans l'app).
+    // 2) Conversion WAV PCM 16 kHz mono — **section** [start, end] seulement
+    //    (C5 : vidéo → audio dans l'app ; F14 : travail par section).
+    let section_dur = section_end - section_start;
     progress(&Progress {
         step: "convert".into(),
         position: 0.0,
-        total: info.duration_secs,
+        total: section_dur,
     });
-    media::to_wav_16k(std::path::Path::new(input), wav)
+    media::to_wav_16k(std::path::Path::new(input), wav, section_start, section_end)
         .map_err(|e| format!("conversion WAV : {e}"))?;
     progress(&Progress {
         step: "convert".into(),
-        position: info.duration_secs,
-        total: info.duration_secs,
+        position: section_dur,
+        total: section_dur,
     });
 
-    // 3) Transcription (whisper.cpp).
-    let tr = asr::transcribe(
+    // 3) Transcription (whisper.cpp) — la WAV porte **la section**, donc les
+    //    horodatages émis sont relatifs à la section (0-based). On les
+    //    décale de `section_start` pour qu'ils restent **alignés sur le
+    //    fichier source** : le lecteur de la page Résultat (F13, qui lit le
+    //    source) saute au bon endroit sans modification.
+    let mut tr = asr::transcribe(
         wav,
         &asr::AsrConfig {
             model: opts.asr_model.clone(),
@@ -119,6 +162,10 @@ fn run_inner(
         },
     )
     .map_err(|e| format!("ASR : {e}"))?;
+    for seg in &mut tr.segments {
+        seg.start += section_start;
+        seg.end += section_start;
+    }
 
     // 4) Résumé (llama.cpp, F4) — dégradation gracie si le modèle est absent :
     //    la transcription reste utilisable (l'app est 100 % locale, chaque
@@ -131,7 +178,7 @@ fn run_inner(
                 String::new(),
                 Some(format!(
                     "Modèle LLM « {} » introuvable — résumé indisponible. \
-                     Déposez le GGUF dans models/ (F11).",
+                     Déposez le GGUF dans models/.",
                     opts.llm_model
                 )),
             )
@@ -173,6 +220,8 @@ fn run_inner(
         device_note: opts.device_note.clone(),
         file: input.to_string(),
         duration_secs: info.duration_secs,
+        section_start,
+        section_end,
     })
 }
 
@@ -254,6 +303,8 @@ mod e2e {
                 device: "CPU".into(),
                 device_note: None,
                 context_instructions: String::new(),
+                section_start: 0.0,
+                section_end: 0.0,
             },
             &mut progress,
         );
@@ -307,6 +358,8 @@ mod serde_tests {
             device_note: None,
             file: "media.wav".into(),
             duration_secs: 42.0,
+            section_start: 0.0,
+            section_end: 42.0,
         };
         let v = serde_json::to_value(&out).unwrap();
         assert_eq!(v["summaryMarkdown"], "s");
@@ -317,6 +370,9 @@ mod serde_tests {
         assert_eq!(v["deviceNote"], serde_json::Value::Null);
         assert_eq!(v["file"], "media.wav");
         assert_eq!(v["durationSecs"], 42.0);
+        // F14 : la section s'écrit bien au fil en camelCase.
+        assert_eq!(v["sectionStart"], 0.0);
+        assert_eq!(v["sectionEnd"], 42.0);
         // Les champs snake_case ne doivent pas apparaître au fil.
         for k in [
             "summary_markdown",
@@ -325,12 +381,61 @@ mod serde_tests {
             "llm_model",
             "device_note",
             "duration_secs",
+            "section_start",
+            "section_end",
         ] {
             assert!(
                 v.get(k).is_none(),
                 "clé snake_case {k} trouvée au fil (le frontend lit du camelCase)"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod section_tests {
+    use super::*;
+
+    /// F14 : la section demandée est bornée à la durée du fichier et validée
+    /// (non vide). `0`/`0` = « tout » → repli fichier complet.
+    #[test]
+    fn effective_section_bounds_and_validates() {
+        // Fichier complet (valeurs nulles).
+        assert_eq!(effective_section(0.0, 0.0, 100.0), Some((0.0, 100.0)));
+        // Section classique.
+        assert_eq!(effective_section(30.0, 60.0, 100.0), Some((30.0, 60.0)));
+        // Section qui déborde la fin du fichier : bornée à la durée.
+        assert_eq!(effective_section(30.0, 500.0, 100.0), Some((30.0, 100.0)));
+        // Début négatif : borné à 0.
+        assert_eq!(effective_section(-5.0, 60.0, 100.0), Some((0.0, 60.0)));
+        // Section vide (fin ≤ début) : refus.
+        assert_eq!(effective_section(60.0, 30.0, 100.0), None);
+        assert_eq!(effective_section(30.0, 30.0, 100.0), None);
+        // Fichier de durée 0 : toute section est vide.
+        assert_eq!(effective_section(0.0, 0.0, 0.0), None);
+    }
+
+    /// F14 : les segments (relatifs à la section, 0-based) sont décalés de
+    /// `start` pour rester alignés sur le fichier source.
+    #[test]
+    fn segments_are_offset_by_section_start() {
+        let mut tr = asr::Transcription {
+            text: "t".into(),
+            segments: vec![
+                asr::Segment { start: 0.0, end: 5.0, text: "a".into() },
+                asr::Segment { start: 10.0, end: 12.0, text: "b".into() },
+            ],
+            language: "fr".into(),
+        };
+        let start = 30.0;
+        for seg in &mut tr.segments {
+            seg.start += start;
+            seg.end += start;
+        }
+        assert_eq!(tr.segments[0].start, 30.0);
+        assert_eq!(tr.segments[0].end, 35.0);
+        assert_eq!(tr.segments[1].start, 40.0);
+        assert_eq!(tr.segments[1].end, 42.0);
     }
 }
 

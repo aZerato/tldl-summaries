@@ -251,7 +251,7 @@ pub fn transcribe(
     if !model_path.exists() {
         return Err(format!(
             "modèle ASR introuvable : {} — déposez le fichier .bin dans \
-             models/ (F11)",
+             models/",
             model_path.display()
         ));
     }

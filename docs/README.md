@@ -11,7 +11,7 @@ garantie.
 > fonctionnalité arrêtée, les documents sont mis à jour. Les choix majeurs
 > sont tracés en ADR avec un statut.
 
-_Dernière mise à jour : 19/11/2026_
+_Dernière mise à jour : 21/11/2026_
 
 ## Index
 
@@ -33,18 +33,20 @@ _Dernière mise à jour : 19/11/2026_
 
 ## État du projet
 
-- Phase : **post-MVP** — MVP (F1→F6 + F11) fait (ASR/LLM branchés, E2E
-  vertes) ; F7/F10/F11/F13/F15/F16 code en place (UI + noyau + tests +
-  E2E), F15/F16 à valider dans l'app
+- **Phase** : post-MVP — MVP (F1→F6 + F11) fait ; **F1/F10/F13/F14/F15/F16/F19
+  validés dans l'app**
+- **En cours (🔧)** : F3, F4 — critères à mesurer (FR correct, < 60 s /
+  10 min — F12)
+- **À valider (📋)** : F2, F5, F6, F7, F12
+- **À faire** : F8 (export), F17/F18 (mode avancé)
 - **Choix arrêtés** : Tauri 2 + Rust · whisper.cpp · **llama.cpp intégré**
   (processus unique, 100 % portable) · FFmpeg embarqué · cible machine
   « Équilibrée » 16 Go
 - **MVP** : import média → conversion vidéo→audio → transcription → résumé,
-  double-vue (transcription + résumé), menu des modèles, récupération des
+  double-vue (transcription + résumé), page « Configuration »,
+  récupération des
   modèles (opt-in)
-- **En cours (🔧)** : F19 — dossiers de rangement des résultats,
-  drag & drop (transcription → dossier, entre dossiers)
 - **UI** : refonte visuelle du 19/11/2026 — fond sombre quasi inchangé,
   accent orange unique (`src/index.css`)
-- Prochaine étape : validation dans l'app (F15/F16/F19), puis
-  F17/F18 (mode avancé)
+- **Prochaine étape** : build macOS Apple Silicon (C2) — le code est
+  prêt, la build doit se faire sur un Mac ; puis F17/F18 (mode avancé)

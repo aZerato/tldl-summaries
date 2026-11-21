@@ -33,11 +33,11 @@ Langue : détection auto avec biais FR ; option « forcer FR ».
 - Température : **0,3** (résumé = déterministe) — réglable (F6)
 - Contexte : **8 k tokens** (10 min d'audio ≈ 1,5–2 k mots → largement couvert)
 - Si la transcription dépasse le contexte : résumé par morceaux puis
-  fusion (à préciser dans F4)
+  fusion (mécanique à préciser)
 - Modèles gérés **directement par l'app** (catalogue GGUF, F6/F11) :
   pas de démon externe (ADR-003)
 
-## 3. Profils (préréglages du menu — F6)
+## 3. Profils (préréglages de la page « Configuration » — F6)
 
 | Profil | Machine cible | ASR | LLM | Device | RAM min |
 |---|---|---|---|---|---|
@@ -71,13 +71,14 @@ Hugging Face, une URL par modèle (catalogue : `src-tauri/src/models.rs`) :
 
 Règles du catalogue :
 
-- **Noms de fichiers en MAJUSCULES** pour la quant (`-Q4_K_M.gguf`) — le dépôt
-  `Qwen/Qwen2.5-7B-Instruct-GGUF` (officiel) est **shardé** (`…-00001-of-00002.gguf`)
-  → on ne le référence pas ; `bartowski` / `ggml-org` fournissent le fichier
-  unique.
-- Les repos `ggml-org/Qwen2.5-*-GGUF` et `ggml-org/Meta-Llama-3.1-8B-Instruct-GGUF`
-  **n'existent pas** (HF renvoie 401 pour un repo absent) → Qwen/Llama sont
-  servis par `bartowski/*` ; seules les Gemma sont chez `ggml-org`.
+- **Noms de fichiers en MAJUSCULES** pour la quant (`-Q4_K_M.gguf`) — le
+  dépôt officiel `Qwen/Qwen2.5-7B-Instruct-GGUF` est **shardé**
+  (`…-00001-of-00002.gguf`) → on ne le référence pas ; `bartowski` /
+  `ggml-org` fournissent le fichier unique.
+- Les repos `ggml-org/Qwen2.5-*-GGUF` et
+  `ggml-org/Meta-Llama-3.1-8B-Instruct-GGUF` **n'existent pas** (HF
+  renvoie 401 pour un repo absent) → Qwen/Llama servis par
+  `bartowski/*` ; seules les Gemma sont chez `ggml-org`.
 - Le repo est résolu insensible à la casse (redirect HF) ; le **fichier** est
   sensible à la casse — d'où ce tableau comme source de vérité. Chaque URL est
   vérifiée via l'API HF (`/api/models/{repo}/tree/main`) avant mise en

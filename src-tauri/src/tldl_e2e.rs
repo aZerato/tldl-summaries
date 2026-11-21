@@ -42,6 +42,23 @@
 //! Fais passer `tldl_lib::storage` (dossiers de rangement, F19 :
 //! create/move/list/delete sans perte) sur un dossier temporaire : jamais
 //! l'historique réel de l'app.
+//!   tldl-e2e section [fichier_média] [dossier_ffmpeg]
+//! Fais passer la **coupe de section** F14 sur le pipeline réel : section
+//! `[20%, 80%]` du fichier → WAV de la section seule → ASR ; vérifie que
+//! les bornes sont reportées, que tous les segments sont **dans**
+//! `[début, fin]` (horodatages décalés du début de section) et que la
+//! transcription est plus courte que le fichier complet. Modèle ASR requis
+//! (`TLDL_E2E_ASR`, défaut « small ») ; LLM absent = dégradation gracie.
+//!   tldl-e2e llm
+//! Fais passer la **passe réelle LLM** (carry LLM, fix chat template) :
+//! vraie génération sur le vrai modèle (`TLDL_E2E_LLM`, défaut
+//! `qwen25-7b-q4`) — contexte « Résume en 10 phrases maximum. » →
+//! `llm::summarize` (lance le binaire `tldl-llm` réel, même dossier que
+//! celui-ci). Vérifie : EOS naturel (arrêt avant `max_tokens`), pas de
+//! méta-préambule (« voici le résumé » …), au plus 10 phrases (heuristique
+//! [.!?]). Transcription de test **longue** (≈ 700 tokens — au-delà du
+//! `n_batch` 512, cf. régression `GGML_ASSERT(n_tokens_all <= n_batch)`).
+//! Modèle absent → ignorée (exit 0), comme les autres modes.
 //!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
@@ -87,6 +104,16 @@ fn main() {
     // Mode F19 : dossiers de rangement (dossier temporaire).
     if argv.first().is_some_and(|a| a.as_str() == "folders") {
         run_folders_e2e();
+        return;
+    }
+    // Mode F14 : coupe de section (WAV de la section, segments décalés).
+    if argv.first().is_some_and(|a| a.as_str() == "section") {
+        run_section_e2e(&argv[1..]);
+        return;
+    }
+    // Mode carry LLM : passe réelle « 10 phrases » (fix chat template).
+    if argv.first().is_some_and(|a| a.as_str() == "llm") {
+        run_llm_e2e();
         return;
     }
 
@@ -141,6 +168,10 @@ fn main() {
         device: "CPU".into(),
         device_note: None,
         context_instructions: String::new(),
+        // F14 : pas de section demandée → fichier complet (le pipeline borne
+        // à la sonde : 0/0 = « tout »).
+        section_start: 0.0,
+        section_end: 0.0,
     };
 
     let mut last_step = String::new();
@@ -291,8 +322,9 @@ fn run_history_e2e() {
     };
 
     let json = r#"{"text":"Bonjour le monde.","segments":[{"start":0.0,"end":2.5,"text":"Bonjour le monde."}],"language":"fr"}"#;
+    // F14 : pas de section demandée → fichier complet (0 / durée).
     let mk = |file: &str, dur: f64, asr: &str, llm: &str, dev: &str, ctx: &str, text: &str, sum: &str| {
-        st.save(file, storage::now_epoch(), dur, asr, llm, dev, ctx, text, json, sum)
+        st.save(file, storage::now_epoch(), dur, asr, llm, dev, ctx, text, json, sum, 0.0, dur)
     };
     let id1 = match mk(
         "C:\\fake\\audio1.wav",
@@ -628,6 +660,8 @@ fn run_resummarize_e2e() {
         text,
         &json,
         "## Synthèse\nRésumé de référence.",
+        0.0,
+        42.0,
     ) {
         Ok(v) => v,
         Err(e) => {
@@ -689,6 +723,8 @@ fn run_resummarize_e2e() {
         text,
         &json,
         &summary,
+        0.0,
+        42.0,
     ) {
         Ok(v) => v,
         Err(e) => {
@@ -752,6 +788,8 @@ fn run_folders_e2e() {
             text,
             json,
             sum,
+            0.0,
+            10.0,
         )
     };
     let a = match mk(
@@ -937,4 +975,320 @@ fn run_folders_e2e() {
 
     let _ = std::fs::remove_dir_all(&dir);
     println!("E2E folders OK : create/move/list/delete sans perte (dossier temporaire, jamais l'historique réel)");
+}
+
+/// E2E de la coupe de section F14 (usage : `tldl-e2e section [fichier_média]
+/// [dossier_ffmpeg]`).
+///
+/// Deux passes de pipeline réel sur le même modèle ASR :
+/// 1) le **fichier complet** (sonde : durée, texte de référence) ;
+/// 2) une **section** `[20 %, 80 %]` du fichier : la WAV intermédiaire ne
+///    contient que la section, les horodatages émis sont relatifs à la
+///    section puis **décalés du début** pour rester alignés sur le fichier
+///    source.
+/// Assertions : bornes reportées, segments contenus dans `[début, fin]`
+/// (tolérance 0,5 s), transcription non vide et plus courte que le complet.
+/// Le LLM est optionnel : absent → dégradation gracie (la transcription est
+/// le sujet).
+fn run_section_e2e(rest: &[String]) {
+    use tldl_lib::models;
+
+    // input : argv[0] ou TLDL_E2E_INPUT ; ffmpeg : argv[1] ou TLDL_FFMPEG_DIR.
+    let input = rest
+        .first()
+        .cloned()
+        .filter(|s| !s.is_empty())
+        .or_else(|| env::var("TLDL_E2E_INPUT").ok())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let ffmpeg = rest
+        .get(1)
+        .cloned()
+        .filter(|s| !s.is_empty())
+        .or_else(|| env::var("TLDL_FFMPEG_DIR").ok())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if input.is_empty() || !Path::new(&input).exists() {
+        println!(
+            "E2E section ignorée : input manquant.\n  \
+             (passer un fichier en argv[1] ou TLDL_E2E_INPUT ; \
+             TLDL_FFMPEG_DIR pour le FFmpeg embarqué)"
+        );
+        return; // exit 0
+    }
+    if !ffmpeg.is_empty() {
+        env::set_var("TLDL_FFMPEG_DIR", &ffmpeg);
+    }
+    // Le modèle ASR est requis (transcription réelle) : absent → ignorée.
+    let asr_id = env::var("TLDL_E2E_ASR")
+        .unwrap_or_else(|_| String::from("small"))
+        .trim()
+        .to_string();
+    let asr_path = models::model_path(models::ModelKind::Asr, &asr_id);
+    if !asr_path.exists() {
+        println!("E2E section ignorée : modèle ASR {asr_id} absent (menu Modèles, TLDL_E2E_ASR) — attendu : {asr_path:?}");
+        return;
+    }
+
+    // Le LLM est optionnel ici : absent → dégradation gracie (summary_error).
+    let mk = |section_start: f64, section_end: f64| PipelineOptions {
+        asr_model: asr_id.clone(),
+        llm_model: "qwen25-7b-q4".into(),
+        language: "auto".into(),
+        temperature: 0.3,
+        use_gpu: false,
+        n_gpu_layers: 0,
+        device: "CPU".into(),
+        device_note: None,
+        context_instructions: String::new(),
+        section_start,
+        section_end,
+    };
+
+    let mut last_step = String::new();
+    let mut step = |p: &pipeline::Progress| {
+        if p.step != last_step {
+            last_step = p.step.clone();
+            println!("  [étape] {}", p.step);
+        }
+    };
+
+    // Passe 1 : fichier complet — la durée sonde cale les bornes de la
+    // section, le texte sert de référence.
+    println!("E2E section : {}", input);
+    let full = match pipeline::run(&input, &mk(0.0, 0.0), &mut step) {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E section : pipeline fichier complet ({e})");
+            std::process::exit(1);
+        }
+    };
+    if full.transcription.segments.is_empty() {
+        eprintln!("ÉCHEC E2E section : transcription complète vide");
+        std::process::exit(1);
+    }
+    let duration = full.duration_secs;
+    if duration <= 0.0 {
+        eprintln!("ÉCHEC E2E section : durée sonde nulle ({duration})");
+        std::process::exit(1);
+    }
+    let (start, end) = (duration * 0.2, duration * 0.8);
+    println!(
+        "      section [{:.2}s, {:.2}s] (fichier {:.2}s)  asr={asr_id}  gpu=false",
+        start, end, duration
+    );
+
+    // Passe 2 : la section seule.
+    let out = match pipeline::run(&input, &mk(start, end), &mut step) {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E section : pipeline section ({e})");
+            std::process::exit(1);
+        }
+    };
+    println!("segments : {}", out.transcription.segments.len());
+    for s in &out.transcription.segments {
+        println!("  [{:>7.2}s - {:>7.2}s] {}", s.start, s.end, s.text);
+    }
+    println!("texte :");
+    println!("  {}", out.transcription.text);
+
+    // 1) Les bornes de la section sont reportées à l'identique.
+    if (out.section_start - start).abs() > 1e-6 || (out.section_end - end).abs() > 1e-6 {
+        eprintln!(
+            "ÉCHEC E2E section : bornes non reportées ({} → {}, attendu {} → {})",
+            out.section_start, out.section_end, start, end
+        );
+        std::process::exit(1);
+    }
+    // 2) Tous les segments sont **dans** la section (décalés du début, donc
+    //    alignés sur le fichier source ; tolérance 0,5 s de bord de segment).
+    let tol = 0.5;
+    for s in &out.transcription.segments {
+        if s.start < start - tol || s.end > end + tol {
+            eprintln!(
+                "ÉCHEC E2E section : segment hors section [{:.2}s - {:.2}s], attendu [{}, {}]",
+                s.start, s.end, start, end
+            );
+            std::process::exit(1);
+        }
+    }
+    // 3) La transcription n'est pas vide.
+    if out.transcription.segments.is_empty() || out.transcription.text.trim().is_empty() {
+        eprintln!("ÉCHEC E2E section : transcription vide");
+        std::process::exit(1);
+    }
+    // 4) Le texte de section est strictement plus court que le complet.
+    if out.transcription.text.len() >= full.transcription.text.len() {
+        eprintln!(
+            "ÉCHEC E2E section : la transcription de section n'est pas plus courte que le fichier complet ({} ≥ {} octets)",
+            out.transcription.text.len(),
+            full.transcription.text.len()
+        );
+        std::process::exit(1);
+    }
+    // Contrôle souple (affichage) : le texte de section doit « couler » dans
+    // le texte complet (même modèle, même décodage) — borne de coupe au
+    // milieu d'un mot, la sous-séquence exacte peut ne pas tenir.
+    let norm = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .map(|c| c.to_ascii_lowercase())
+            .collect::<String>()
+    };
+    let contained = norm(&full.transcription.text).contains(&norm(&out.transcription.text));
+    println!(
+        "contrôle contenu : {} (texte section ⊂ texte complet)",
+        if contained { "OK" } else { "approximatif (borne de coupe ?)" }
+    );
+
+    println!("E2E section OK : WAV de la section seule, segments dans [{:.2}s, {:.2}s], texte plus court que le complet", start, end);
+}
+
+/// E2E de la passe réelle LLM (carry LLM) : usage `tldl-e2e llm`.
+///
+/// Vraie génération sur le vrai modèle (`TLDL_E2E_LLM`, défaut
+/// `qwen25-7b-q4`) : contexte « Résume en 10 phrases maximum. » →
+/// `llm::summarize` (lance le binaire `tldl-llm` réel, même dossier que
+/// celui-ci), sur une transcription de test **longue** (≈ 700 tokens —
+/// bien au-delà du `n_batch` 512 : régression du `GGML_ASSERT` sur un
+/// fichier de 15 min dans l'app). Exigence dure : EOS naturel (la génération
+/// s'arrête avant
+/// `max_tokens`), pas de méta-préambule, au plus 10 phrases (heuristique
+/// [.!?]) — le filet anti-boucle `truncate_repetition` est en place
+/// (cf. `llm/mod.rs`). Modèle absent → ignorée (exit 0), comme les autres
+/// modes.
+fn run_llm_e2e() {
+    use tldl_lib::asr::Transcription;
+    use tldl_lib::llm::{self, LlmConfig};
+    use tldl_lib::models;
+
+    let llm_id = env::var("TLDL_E2E_LLM")
+        .unwrap_or_else(|_| String::from("qwen25-7b-q4"))
+        .trim()
+        .to_string();
+    if !models::model_path(models::ModelKind::Llm, &llm_id).exists() {
+        println!("E2E llm ignorée : modèle LLM {llm_id} absent (TLDL_E2E_LLM)");
+        return;
+    }
+
+    // Transcription longue (≈ 700 tokens — bien au-delà du `n_batch` 512,
+    // cf. régression `GGML_ASSERT(n_tokens_all <= n_batch)` sur un fichier
+    // de 15 min) : plusieurs chapitres de réunion, tous distincts.
+    let text = "Nous avons passé en revue la feuille de route du \
+               troisième trimestre. L'équipe a validé la migration vers le \
+               nouveau prestataire de paiement, avec une échéance fixée à la \
+               fin septembre. La sécurité était la préoccupation principale : \
+               le prestataire doit être certifié SOC 2. Nous avons décidé de \
+               lancer le spike technique lundi. Une démo sera programmée fin \
+               mois pour le comité de pilotage. Aucun budget n'a été voté, en \
+               attendant les premières factures. La prochaine étape est la \
+               mise en place des tests d'intégration. Le point d'avancement \
+               aura lieu toutes les deux semaines. \
+               On a aussi fait le point sur la bascule des environnements \
+               de recette. L'infrastructure doit être dupliquée avant la fin \
+               du sprint, et les variables de configuration seront \
+               centralisées dans un dépôt à part. Deux ingénieurs seront \
+               dédiés à la bascule, avec un retour d'expérience à chaque \
+               étape. En cas de régression bloquante, l'équipe peut revenir \
+               en arrière sans impact pour les clients. \
+               Le volet monitoring a été détaillé : les alertes critiques \
+               partiront vers la garde, et les seuils de latence seront \
+               revus chaque mois. Un tableau de bord sera tenu à jour pour \
+               le comité, avec la qualité, le volume et les incidents. Les \
+               valeurs de référence seront fixées d'ici la fin du mois, à \
+               partir des mesures réelles de production. \
+               Sur la donnée, l'export historique sera géré par un script de \
+               migration, et la double écriture restera en place le temps \
+               d'un cycle complet. La conformité RGPD a été rappelée : les \
+               données personnelles seront pseudonymisées avant tout \
+               transfert. Un audit sera demandé au prestataire avant \
+               l'ouverture de la production. \
+               Le plan de communication interne sera envoyé à l'ensemble des \
+               équipes avant la fin de semaine, avec les consignes de prise \
+               en main. Les équipes métier auront une session de formation de \
+               deux heures, animée par les responsables de projet. Les \
+               supports de formation seront mis en ligne dans l'intranet, et \
+               chaque participant recevra le replay. \
+               Les risques ont été passés en revue : le principal reste la \
+               dépendance au certificat du prestataire, et un plan B est \
+               prévu avec un sous-traitant de repli. Le calendrier sera tenu \
+               au plus près, avec un point hebdomadaire entre les deux \
+               points de pilotage. La charge de la décision revient au comité \
+               de direction, qui se prononcera avant la fin du mois. \
+               Côté organisation, chaque équipe remonte ses charges réelles \
+               chaque vendredi, et les arbitrages seront notés dans le \
+               suivi de sprint. Les indicateurs de qualité seront suivis sur \
+               l'ensemble du trimestre, avec un objectif de disponibilité à \
+               fixer d'ici la fin du mois. Les écarts seront discutés en \
+               revue de production, et les actions correctives feront l'objet \
+               d'un suivi nominatif. \
+               Pour conclure, les prochaines étapes sont arrêtées : le spike \
+               technique démarre lundi, la démo est fixée à la fin du mois, \
+               et le comité de pilotage se réunira après la bascule. Les \
+               points de blocage remontent directement au chef de projet, \
+               qui consolide l'ensemble avant chaque point d'avancement. La \
+               prochaine feuille de route sera arbitrée au premier \
+               trimestre suivant, en fonction des résultats mesurés.";
+    let tr = Transcription {
+        text: text.into(),
+        segments: Vec::new(),
+        language: "fr".into(),
+    };
+    let ctx = "Résume en 10 phrases maximum.";
+    let cfg = LlmConfig {
+        model: llm_id.clone(),
+        temperature: 0.3,
+        max_tokens: 1024,
+    };
+
+    let mut last = (0u32, 0u32);
+    let summary = match llm::summarize(&tr, &cfg, ctx, 0, &mut |n, max| last = (n, max)) {
+        Ok(md) => md,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E llm : {e}");
+            std::process::exit(1);
+        }
+    };
+    let (produced, max_tokens) = last;
+    println!("tokens produits : {produced} / {max_tokens}");
+    println!("résumé produit :");
+    println!("{summary}");
+
+    // 0) Non vide.
+    if summary.trim().is_empty() {
+        eprintln!("ÉCHEC E2E llm : résumé vide");
+        std::process::exit(1);
+    }
+    // 1) Pas de méta-préambule.
+    let lower = summary.to_lowercase();
+    let preamble = ["voici le résumé", "voici un résumé", "voici la transcription"]
+        .iter()
+        .any(|p| lower.contains(p));
+    if preamble {
+        eprintln!("ÉCHEC E2E llm : méta-préambule détecté");
+        std::process::exit(1);
+    }
+    // 2) EOS naturel : la génération s'arrête avant max_tokens.
+    if produced >= max_tokens {
+        eprintln!(
+            "ÉCHEC E2E llm : pas d'EOS naturel (génération arrivée à max_tokens={max_tokens})"
+        );
+        std::process::exit(1);
+    }
+    // 3) Au plus 10 phrases (heuristique sur la ponctuation terminale).
+    let sentences = summary
+        .split(['.', '!', '?'])
+        .filter(|s| !s.trim().is_empty())
+        .count();
+    if sentences > 10 {
+        eprintln!("ÉCHEC E2E llm : {sentences} phrases (exigence : 10 maximum)");
+        std::process::exit(1);
+    }
+
+    println!(
+        "E2E llm OK : passe réelle « 10 phrases » — EOS naturel à {produced} tokens, sans méta-préambule, {sentences} phrase(s)"
+    );
 }

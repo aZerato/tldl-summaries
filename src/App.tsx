@@ -59,7 +59,7 @@ export default function App() {
             className={page === "settings" ? "tab active" : "tab"}
             onClick={() => setPage("settings")}
           >
-            Modèles
+            Configuration
           </button>
         </nav>
         <span className="app-sub">transcription + résumé · 100 % local</span>

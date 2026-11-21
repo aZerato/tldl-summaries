@@ -8,9 +8,9 @@ Synthèse locale d'audio/vidéo : import d'un fichier → **transcription**
 ## Stack
 
 - Coquille : **Tauri 2** (Rust) + **React / TypeScript** (Vite)
-- ASR : whisper.cpp (GGUF) — ⚠️ stub, moteur à brancher (F3)
-- LLM : llama.cpp (GGUF, Q4_K_M) — ⚠️ stub, moteur à brancher (F4)
-- Média : FFmpeg (sonde + conversion WAV 16 kHz mono)
+- ASR : whisper.cpp v1.9.5 (vendu, build CMake + shim C)
+- LLM : llama.cpp b10884 — binaire dédié `tldl-llm` (GGUF, Q4_K_M)
+- Média : FFmpeg (sonde + conversion WAV 16 kHz mono), **embarqué**
 - Stockage : SQLite (rusqlite, bundled)
 
 ## Prérequis dev
@@ -18,8 +18,9 @@ Synthèse locale d'audio/vidéo : import d'un fichier → **transcription**
 - **Rust** (MSVC build tools sous Windows) — à installer : `winget install Rust`
 - **Node 20+**
 - Windows : **WebView2** (préinstallé sur Win 11)
-- **FFmpeg** sur le PATH (ou `TLDL_FFMPEG_DIR` pointant vers les
-  binaires) — l'embarquement est une tâche à venir (`assets/ffmpeg/`)
+- **Aucun FFmpeg à installer** : les binaires sont embarqués dans le repo
+  (`assets/ffmpeg/<cible>/`) et localisés automatiquement (bundle + dev) —
+  `TLDL_FFMPEG_DIR` n'est qu'une override E2E/tests
 
 ## Lancer (dev)
 
@@ -30,6 +31,10 @@ npm run tauri dev
 
 Le premier `tauri dev` compile le crate Rust (long la 1ʳᵉ fois).
 
+Build GPU (CUDA sous Windows) : `npm run dev:gpu` — wrapper qui pose
+`TLDL_GPU=cuda` + `CUDA_PATH` et met `bin\x64` CUDA sur le PATH runtime
+(cible MSVC exigée ; cf. docs/architecture.md §10.1).
+
 ## Construire (prod)
 
 ```
@@ -38,15 +43,17 @@ npm run tauri build
 
 ## État
 
-Scaffold initial posé le 14/11/2026 :
+Post-MVP : MVP (F1 → F6 + F11) fait, puis F1/F10/F13/F14/F15/F16/F19
+**validés dans l'app** (cf. [docs/README.md](docs/README.md)).
 
-- UI : pages Import / Résultat (double-vue Transcription | Résumé) / Modèles
-- Noyau : pipeline orchestré (probe → WAV → ASR → LLM), catalogue de
-  modèles, historique SQLite, config persistée
-- **ASR/LLM = stubs** : interfaces prêtes (types, progress, chemins des
-  modèles), moteurs à brancher
-- FFmpeg : résolu via `TLDL_FFMPEG_DIR` ou PATH (embarquement à venir)
-- Modèles : dépôt manuel dans `<données-app>/models/` (téléchargement F11
-  à brancher)
+- **ASR** : whisper.cpp v1.9.5 branché (build CMake + shim C, GPU via
+  `TLDL_GPU`)
+- **LLM** : llama.cpp b10884 branché — binaire dédié `tldl-llm`, résumé
+  Markdown
+- **FFmpeg** : embarqué (`assets/ffmpeg/<cible>/`), localisé
+  automatiquement — ni PATH, ni variable d'environnement requis
+- **Modèles** : catalogue local + téléchargement Hugging Face opt-in (F11)
+- **GPU** (F10) : build CUDA/Metal/Vulkan via `TLDL_GPU` (défaut CPU),
+  détection des devices, bascule CPU si GPU absent
 
 Voir [docs/features.md](docs/features.md) pour l'état par feature.
