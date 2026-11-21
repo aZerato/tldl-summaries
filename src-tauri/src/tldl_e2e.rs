@@ -49,6 +49,14 @@
 //! `[début, fin]` (horodatages décalés du début de section) et que la
 //! transcription est plus courte que le fichier complet. Modèle ASR requis
 //! (`TLDL_E2E_ASR`, défaut « small ») ; LLM absent = dégradation gracie.
+//!   tldl-e2e llm
+//! Fais passer la **passe réelle LLM** (carry LLM, fix chat template) :
+//! vraie génération sur le vrai modèle (`TLDL_E2E_LLM`, défaut
+//! `qwen25-7b-q4`) — contexte « Résume en 10 phrases maximum. » →
+//! `llm::summarize` (lance le binaire `tldl-llm` réel, même dossier que
+//! celui-ci). Vérifie : EOS naturel (arrêt avant `max_tokens`), pas de
+//! méta-préambule (« voici le résumé » …), au plus 10 phrases (heuristique
+//! [.!?]). Modèle absent → ignorée (exit 0), comme les autres modes.
 //!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
@@ -99,6 +107,11 @@ fn main() {
     // Mode F14 : coupe de section (WAV de la section, segments décalés).
     if argv.first().is_some_and(|a| a.as_str() == "section") {
         run_section_e2e(&argv[1..]);
+        return;
+    }
+    // Mode carry LLM : passe réelle « 10 phrases » (fix chat template).
+    if argv.first().is_some_and(|a| a.as_str() == "llm") {
+        run_llm_e2e();
         return;
     }
 
@@ -1130,4 +1143,99 @@ fn run_section_e2e(rest: &[String]) {
     );
 
     println!("E2E section OK : WAV de la section seule, segments dans [{:.2}s, {:.2}s], texte plus court que le complet", start, end);
+}
+
+/// E2E de la passe réelle LLM (carry LLM) : usage `tldl-e2e llm`.
+///
+/// Vraie génération sur le vrai modèle (`TLDL_E2E_LLM`, défaut
+/// `qwen25-7b-q4`) : contexte « Résume en 10 phrases maximum. » →
+/// `llm::summarize` (lance le binaire `tldl-llm` réel, même dossier que
+/// celui-ci). Exigence dure : EOS naturel (la génération s'arrête avant
+/// `max_tokens`), pas de méta-préambule, au plus 10 phrases (heuristique
+/// [.!?]) — le filet anti-boucle `truncate_repetition` est en place
+/// (cf. `llm/mod.rs`). Modèle absent → ignorée (exit 0), comme les autres
+/// modes.
+fn run_llm_e2e() {
+    use tldl_lib::asr::Transcription;
+    use tldl_lib::llm::{self, LlmConfig};
+    use tldl_lib::models;
+
+    let llm_id = env::var("TLDL_E2E_LLM")
+        .unwrap_or_else(|_| String::from("qwen25-7b-q4"))
+        .trim()
+        .to_string();
+    if !models::model_path(models::ModelKind::Llm, &llm_id).exists() {
+        println!("E2E llm ignorée : modèle LLM {llm_id} absent (TLDL_E2E_LLM)");
+        return;
+    }
+
+    let text = "Nous avons passé en revue la feuille de route du \
+               troisième trimestre. L'équipe a validé la migration vers le \
+               nouveau prestataire de paiement, avec une échéance fixée à la \
+               fin septembre. La sécurité était la préoccupation principale : \
+               le prestataire doit être certifié SOC 2. Nous avons décidé de \
+               lancer le spike technique lundi. Une démo sera programmée fin \
+               mois pour le comité de pilotage. Aucun budget n'a été voté, en \
+               attendant les premières factures. La prochaine étape est la \
+               mise en place des tests d'intégration. Le point d'avancement \
+               aura lieu toutes les deux semaines.";
+    let tr = Transcription {
+        text: text.into(),
+        segments: Vec::new(),
+        language: "fr".into(),
+    };
+    let ctx = "Résume en 10 phrases maximum.";
+    let cfg = LlmConfig {
+        model: llm_id.clone(),
+        temperature: 0.3,
+        max_tokens: 1024,
+    };
+
+    let mut last = (0u32, 0u32);
+    let summary = match llm::summarize(&tr, &cfg, ctx, 0, &mut |n, max| last = (n, max)) {
+        Ok(md) => md,
+        Err(e) => {
+            eprintln!("ÉCHEC E2E llm : {e}");
+            std::process::exit(1);
+        }
+    };
+    let (produced, max_tokens) = last;
+    println!("tokens produits : {produced} / {max_tokens}");
+    println!("résumé produit :");
+    println!("{summary}");
+
+    // 0) Non vide.
+    if summary.trim().is_empty() {
+        eprintln!("ÉCHEC E2E llm : résumé vide");
+        std::process::exit(1);
+    }
+    // 1) Pas de méta-préambule.
+    let lower = summary.to_lowercase();
+    let preamble = ["voici le résumé", "voici un résumé", "voici la transcription"]
+        .iter()
+        .any(|p| lower.contains(p));
+    if preamble {
+        eprintln!("ÉCHEC E2E llm : méta-préambule détecté");
+        std::process::exit(1);
+    }
+    // 2) EOS naturel : la génération s'arrête avant max_tokens.
+    if produced >= max_tokens {
+        eprintln!(
+            "ÉCHEC E2E llm : pas d'EOS naturel (génération arrivée à max_tokens={max_tokens})"
+        );
+        std::process::exit(1);
+    }
+    // 3) Au plus 10 phrases (heuristique sur la ponctuation terminale).
+    let sentences = summary
+        .split(['.', '!', '?'])
+        .filter(|s| !s.trim().is_empty())
+        .count();
+    if sentences > 10 {
+        eprintln!("ÉCHEC E2E llm : {sentences} phrases (exigence : 10 maximum)");
+        std::process::exit(1);
+    }
+
+    println!(
+        "E2E llm OK : passe réelle « 10 phrases » — EOS naturel à {produced} tokens, sans méta-préambule, {sentences} phrase(s)"
+    );
 }

@@ -82,8 +82,19 @@ void tldl_llama_free(TldlLlama * e) {
     free(e);
 }
 
-/* Génère depuis un prompt UTF-8 ; écrit le texte (sans nul) dans `out`.
- * Retourne le nombre d'octets écrits, ou -1 en cas d'erreur. */
+/* Génère depuis un prompt UTF-8 (le message `user`) ; écrit le texte
+ * (sans nul) dans `out`. Retourne le nombre d'octets écrits, ou -1 en cas
+ * d'erreur.
+ *
+ * Chat template (fix, carry LLM) : le message est formaté comme dialogue
+ * à 1 message (`llama_chat_apply_template`, add_ass) **avant
+ * tokenisation** — le modèle reçoit le prompt dans son format
+ * d'entraînement. Template : celui du GGUF s'il y en a un ; sinon, si le
+ * vocabulaire connaît le token ` im_start` comme 1 seul token (type
+ * ChatML, cas Qwen2.5), le template prédéfini "chatml" (b10884 : liste
+ * prédéfinie, pas de Jinja). Sinon : chemin legacy (prompt tel quel).
+ * Buffer : 2× le message (reco. du header) ; si le résultat le déborde :
+ * réallocation + re-apply. */
 int32_t tldl_llama_generate(TldlLlama * e, const char * prompt, int32_t prompt_len,
                            int32_t max_tokens, float temperature, float top_p,
                            uint32_t seed, float repeat_penalty, int32_t penalty_window,
@@ -93,13 +104,59 @@ int32_t tldl_llama_generate(TldlLlama * e, const char * prompt, int32_t prompt_l
         return -1;
     }
 
-    /* Tokenisation du prompt (BOS en tête si le modèle l'exige). */
-    int32_t n_max = (prompt_len > 0 ? prompt_len : 1) + 16;
+    /* Chat template (fix, carry LLM) : cf. doc de la fonction. */
+    const char * tmpl = llama_model_chat_template(e->model, NULL);
+    if (tmpl == NULL) {
+        /* GGUF sans template (cas Qwen2.5) : le vocabulaire décide.
+         * S'il connaît le token ` im_start` comme 1 seul token — type
+         * ChatML — on applique le template prédéfini "chatml" (le format
+         * d'entraînement de ces modèles). Sinon : legacy. */
+        llama_token tok;
+        int32_t ntok = llama_tokenize(e->vocab, " im_start", 9, &tok, 16, false, true);
+        tmpl = (ntok == 1) ? "chatml" : NULL;
+    }
+    const char * text = prompt;
+    int32_t text_len = prompt_len;
+    char * formatted = NULL;
+    if (tmpl != NULL) {
+        struct llama_chat_message msg = { "user", prompt };
+        int32_t cap = 2 * prompt_len + 64;
+        char * buf = (char *)malloc((size_t)cap);
+        if (buf != NULL) {
+            int32_t len = llama_chat_apply_template(tmpl, &msg, 1, true, buf, cap);
+            if (len > 0 && len <= cap) {
+                formatted = buf;
+                text = formatted;
+                text_len = len;
+            } else if (len > cap) {
+                char * big = (char *)malloc((size_t)len);
+                if (big != NULL) {
+                    free(buf);
+                    len = llama_chat_apply_template(tmpl, &msg, 1, true, big, len);
+                    if (len > 0) {
+                        formatted = big;
+                        text = formatted;
+                        text_len = len;
+                    } else {
+                        free(big);
+                    }
+                } else {
+                    free(buf);
+                }
+            } else {
+                free(buf); /* template non détecté : chemin legacy */
+            }
+        }
+    }
+
+    /* Tokenisation du prompt formaté (BOS en tête si le modèle l'exige). */
+    int32_t n_max = (text_len > 0 ? text_len : 1) + 16;
     llama_token * tokens = (llama_token *)malloc((size_t)n_max * sizeof(llama_token));
     if (tokens == NULL) {
+        free(formatted);
         return -1;
     }
-    int32_t n = llama_tokenize(e->vocab, prompt, prompt_len, tokens, n_max, false, true);
+    int32_t n = llama_tokenize(e->vocab, text, text_len, tokens, n_max, false, true);
     if (n < 0) {
         free(tokens);
         return -1;
@@ -126,6 +183,7 @@ int32_t tldl_llama_generate(TldlLlama * e, const char * prompt, int32_t prompt_l
     if (rc < 0) {
         llama_batch_free(batch);
         free(tokens);
+        free(formatted);
         return -1;
     }
 
@@ -183,5 +241,6 @@ int32_t tldl_llama_generate(TldlLlama * e, const char * prompt, int32_t prompt_l
     llama_sampler_free(smpl);
     llama_batch_free(batch);
     free(tokens);
+    free(formatted);
     return n_out;
 }

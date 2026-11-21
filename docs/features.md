@@ -47,6 +47,13 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - Moteur : llama.cpp b10884 dans binaire dédié `tldl-llm` (§5.2) — **résumé
   Markdown généré** (Synthèse / Points clés / Décisions / Actions à venir)
 - Régénérable (bouton « recommencer ») ; température réglable
+- **Format de dialogue (fix carry LLM)** : le prompt est formaté
+  **avant tokenisation** comme message `user` dans le template
+  d'entraînement du modèle (shim C — cf. architecture.md §5.2) : le
+  modèle *répond* au lieu de compléter — pas de méta-préambule (« voici
+  le résumé… »), l'EOS sort naturellement, la contrainte « 10 phrases
+  maximum » tient ; passe réelle E2E `tldl-e2e llm` (vrai modèle, CPU) :
+  EOS naturel à 105/1024 tokens, 6 phrases, sans méta-préambule
 - **Critères** : hors ligne ; < 60 s pour 10 min d'audio sur profil
   « Équilibré » (benchmark F12 pour arrêter)
 

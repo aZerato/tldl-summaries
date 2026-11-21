@@ -190,10 +190,22 @@ Mécanique :
   **pénalité de répétition 1.2** (fenêtre 64 tokens ; freq/present à 0 —
   pas de pénalité sur toute la séquence, qui biaiserait les mots de liaison
   du français). Sans elle, le modèle dégenère en boucle : il re-récite le
-  même bloc jusqu'à `max_tokens` sans EOS (ex. « résume en 10 phrases » —
-  corrigé, validé GPU : arrêt naturel à l'EOS). Sur des entrées très courtes
-  (1 phrase — E2E `jfk.wav`), la dégénérescence persiste côté CPU :
-  limitation du modèle 7B q4, pas du sampling.
+  même bloc jusqu'à `max_tokens` sans EOS (ex. « résume en 10 phrases »).
+  La pénalité casse la boucle *mot à mot* ; la boucle **paraphrasée**
+  (les tokens diffèrent à chaque cycle) est coupée *a posteriori* par
+  `truncate_repetition` (`llm/mod.rs` — similarité de paragraphes) ; et le
+  fix **chat template** (ci-après) traite la cause racine.
+- **Chat template** (shim C, fix carry LLM) : le prompt est le message
+  `user` d'un dialogue à 1 message ; il est formaté **avant
+  tokenisation** par `llama_chat_apply_template` (add_ass) dans le format
+  d'entraînement du modèle (famille ` im_start`/` im_end` — liste
+  prédéfinie de b10884, pas de Jinja) : le modèle *répond* au lieu de
+  *compléter*, et l'EOS sort naturellement. Template : celui du GGUF
+  (`tokenizer.chat_template`) s'il y en a un ; sinon, si le vocabulaire
+  connaît le token ` im_start` comme 1 seul token (type ChatML — cas
+  Qwen2.5, GGUF sans template), le template prédéfini `"chatml"` ; sinon
+  prompt tel quel (chemin legacy). Buffer 2× le message (reco. du header) ;
+  si le résultat le déborde : réallocation + re-apply.
 
 Vérifié (cible GNU, Qwen2.5-1.5B Q4_K_M) : ASR small → transcription, puis
 `tldl-llm` génère le Markdown (Synthèse / Points clés / Décisions / Actions
@@ -370,6 +382,7 @@ tldl-e2e section [fichier_média] [dossier_ffmpeg]
                                              # F14 : coupe de section (2 passes :
                                              # fichier complet + section [20 %, 80 %])
 TLDL_E2E_ASR=<id>                           # id du modèle ASR du mode section (sinon small)
+tldl-e2e llm                                # carry LLM : passe réelle « 10 phrases »
 ```
 
 Le `dossier_ffmpeg` est **optionnel** : `media.rs` s'auto-localise
@@ -398,7 +411,45 @@ Mode `history` (F7) : va-et-retour factice `tldl_lib::storage` dans un
 dossier temporaire (jamais l'historique réel de l'app) — save → list →
 get → search plein texte, puis nettoyage.
 
+Mode `llm` (carry LLM, fix chat template) : passe **réelle** du LLM — vraie
+génération sur le vrai modèle (`TLDL_E2E_LLM`, défaut `qwen25-7b-q4`) avec
+le contexte « Résume en 10 phrases maximum. » → `llm::summarize` (spawne
+le binaire `tldl-llm` réel, même dossier que celui-ci). Vérifie l'exigence
+dure : **EOS naturel** (la génération s'arrête avant `max_tokens`),
+**pas de méta-préambule** (« voici le résumé »…), **au plus 10 phrases**
+(heuristique sur la ponctuation terminale) — le filet `truncate_repetition`
+reste en place (§5.2). Modèle absent → ignorée (exit 0), comme les autres
+modes. Vérifié (`qwen25-7b-q4`, CPU) : **EOS naturel à 105/1024 tokens**,
+6 phrases, sans méta-préambule — le fix chat template tient sur le 7B.
+
 > Outil annexe `tldl-manifest` (`src/manifest_tool.rs`) : diagnostic/patch du
 > manifest PE d'un binaire Windows (vérifie le v6, `dump` de l'arborescence
 > `.rsrc`). Hors du chemin critique E2E — ne pas l'invoquer sur un binaire
 > fonctionnel (le mode `patch` a démontré ses limites sur la cible GNU).
+
+### 10.3 macOS — Apple Silicon (`aarch64-apple-darwin`)
+
+La build macOS se fait **sur** un Mac (C2 — pas de croisé depuis Windows ;
+le DMG/ZIP est assemblé sur le poste de build). Prérequis : Xcode Command
+Line Tools (`xcode-select --install` — fournit `/usr/bin/c++`, clang++ et
+make) et CMake (`brew install cmake`).
+
+Mécanique (`build.rs` + `tldl_llm_bin.rs`, cf. §5.2) :
+
+- `build.rs` détecte `Toolchain::Apple` : `env::consts::OS == "macos"` +
+  `/usr/bin/c++` présent. Le séparateur de `PATH` est `:` (fn `path_sep`) —
+  les scans `find_cmake` / `gnu_candidates` / `find_toolchain` l'utilisent.
+- Pas de Ninja (générateur CMake par défaut : Unix Makefiles), pas de
+  préfixe `lib` à fabriquer (les archives CMake Apple sortent déjà
+  `lib*.a`), pas d'ancrage CUDA (`TLDL_GPU=cuda` reste Windows/Linux —
+  l'ancrage `CUDA_CUDART` est un no-op hors Windows).
+- **Runtime C++ libc++** : mesure double — le build script émet
+  `cargo:rustc-link-lib=dylib=c++` (l'app), et `tldl_llm_bin.rs` épingle
+  `#[cfg(target_os = "macos")] #[link(name = "c++")]` (le binaire
+  `tldl-llm — l'émission du build script n'atteint pas sa ligne de lien,
+  cf. §5.2) ; un `-lc++` en double est inoffensif.
+- **GPU optionnel (C3, F10)** : `TLDL_GPU=metal` refuse un host non-macOS
+  (gate dans `build.rs`) ; sur le Mac, `GGML_METAL=ON` des **deux** ggml +
+  cfg `tldl_gpu_metal` → `#[link]` `ggml-metal` (app, `asr/mod.rs`) et
+  `tldl_ggml-metal` (`tldl-llm`) ; `gpu.rs` détecte le Metal à
+  l'exécution et bascule CPU si absent.

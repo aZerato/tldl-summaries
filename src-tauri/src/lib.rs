@@ -2,7 +2,7 @@ pub mod asr;
 mod commands;
 mod config;
 pub mod gpu;
-mod llm;
+pub mod llm;
 mod media;
 pub mod models;
 pub mod pipeline;
