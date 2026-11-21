@@ -178,7 +178,7 @@ fn run_inner(
                 String::new(),
                 Some(format!(
                     "Modèle LLM « {} » introuvable — résumé indisponible. \
-                     Déposez le GGUF dans models/ (F11).",
+                     Déposez le GGUF dans models/.",
                     opts.llm_model
                 )),
             )

@@ -139,7 +139,7 @@ export default function SettingsPage({ config, onChange }: Props) {
     <div className="page">
       <h2>Modèles</h2>
       <p className="muted">
-        Les modèles sont stockés localement, téléchargement opt-in (F11).
+        Les modèles sont stockés localement, téléchargement opt-in.
         Hors ligne : déposez les fichiers GGUF/.bin à la main dans le dossier
         <code> models/</code> de l'app.
       </p>
@@ -249,7 +249,7 @@ export default function SettingsPage({ config, onChange }: Props) {
       </section>
 
       <section className="card">
-        <h3>Accélération (F10)</h3>
+        <h3>Accélération</h3>
         <label className="field">
           <input
             type="checkbox"

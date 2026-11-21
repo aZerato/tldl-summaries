@@ -245,8 +245,8 @@ pub fn summarize(
     let model_file = crate::models::model_path(crate::models::ModelKind::Llm, &cfg.model);
     if !model_file.exists() {
         return Err(format!(
-            "modèle LLM introuvable : {} — téléchargez-le (F11) ou déposez \
-             le GGUF dans models/",
+            "modèle LLM introuvable : {} — téléchargez-le ou déposez le \
+             GGUF dans models/",
             model_file.display()
         ));
     }

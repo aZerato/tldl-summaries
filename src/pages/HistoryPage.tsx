@@ -387,8 +387,8 @@ export default function HistoryPage({ onOpen }: Props) {
       <p className="muted">
         Traitements conservés localement (SQLite), groupés par fichier :
         même transcription, une ligne par variante de résumé (contexte +
-        date — F15/F16). Glissez une ligne (ou un en-tête de groupe) sur un
-        dossier pour le ranger (F19) ; « Sans dossier » le sort.
+        date). Glissez une ligne (ou un en-tête de groupe) sur un dossier
+        pour le ranger ; « Sans dossier » le sort.
       </p>
 
       <div className="folders-layout">
@@ -525,7 +525,7 @@ export default function HistoryPage({ onOpen }: Props) {
                     </span>
                     <select
                       className="folder-pick"
-                      title="Ranger tous les résumés de ce fichier (F19)"
+                      title="Ranger tous les résumés de ce fichier"
                       value={
                         g.rows.every(
                           (r) => r.folderId === g.rows[0].folderId,
@@ -594,7 +594,7 @@ export default function HistoryPage({ onOpen }: Props) {
                         </span>
                         <select
                           className="folder-pick"
-                          title="Ranger dans un dossier (F19)"
+                          title="Ranger dans un dossier"
                           value={
                             r.folderId === null ? "" : String(r.folderId)
                           }

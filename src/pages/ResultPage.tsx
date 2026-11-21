@@ -469,7 +469,7 @@ export default function ResultPage({
         ASR : {result.asrModel} · LLM : {result.llmModel} · Device :{" "}
         {result.device} · {Math.round(result.durationSecs)} s de média ·{" "}
         {result.sectionStart > 0 || result.sectionEnd < result.durationSecs ? (
-          <span title="Section traitée (F14) — les segments sont décalés du début de section pour rester alignés sur le fichier source">
+          <span title="Section traitée — les segments sont décalés du début de section pour rester alignés sur le fichier source">
             section {fmtTime(result.sectionStart)} → {fmtTime(result.sectionEnd)}
           </span>
         ) : (
