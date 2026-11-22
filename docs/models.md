@@ -13,10 +13,10 @@ pas à la somme.
 | tiny | ~75 Mo | ~0,5 Go | ~5× temps réel | test / ultra-léger |
 | base | ~150 Mo | ~1 Go | ~3–4× temps réel | low-end, FR correct |
 | **small** ⭐ | ~480 Mo | ~1,5 Go | ~1,5–2× temps réel | **défaut recommandé** |
-| medium | ~1,55 Go | ~3 Go | ~1× temps réel | FR plus fin, CPU fort |
+| medium | ~1,55 Go | ~3 Go | **2,5× temps réel** (mesuré — F12) | FR plus fin, CPU fort |
 | large-v3-turbo | ~1,6 Go | ~3,5 Go | GPU conseillé | top qualité / rapidité |
 
-\* Indicatif, à mesurer (F12). Quantisations Q5_K_M / Q8_0 possibles
+\* Estimatif, sauf **medium** (mesuré — F12). Quantisations Q5_K_M / Q8_0 possibles
 (−10 à −20 % de RAM, perte négligeable).
 Langue : détection auto avec biais FR ; option « forcer FR ».
 
@@ -89,3 +89,52 @@ Règles du catalogue :
 - Moteur validé E2E (`tldl-e2e download <id> <url>` — HTTP local + HTTPS réel)
   et **téléchargement HF réel confirmé dans l'app** (Gemma 3 4B, 2 489 757 856
   o, taille conforme au repo).
+
+## 6. Mesures — bench F12 (21/11/2026)
+
+Audio : JFK (EN) bouclé 5 / 10 / 30 min (~120 mots/min). Modèles :
+**whisper-medium** (ASR) + **qwen25-7b-q4** (LLM) — les défauts
+« Équilibré ». Deux devices mesurés : **CPU** (Intel Core i5-14600KF,
+20 threads) et **GPU** (NVIDIA GeForce RTX 4070 Ti SUPER, 16 Go, compute
+8.9 — build CUDA `TLDL_GPU=cuda`). Run propre (Qwen arrêté — pas de
+contention), relancé par script : CPU puis GPU, un rapport par device.
+
+**Vue par device (ASR + LLM, total) :**
+
+| Durée | CPU — ASR | CPU — total | GPU — ASR | GPU — total | gain total |
+|---|---|---|---|---|---|
+| 5 min | 122,1 s | 135,8 s | 5,4 s | 9,1 s | 14,9× |
+| 10 min | 232,7 s | 246,5 s | 9,2 s | 12,7 s | 19,4× |
+| 30 min | 695,0 s | 719,2 s | 25,3 s | 29,8 s | 24,1× |
+
+**CPU** (i5-14600KF) :
+
+| Durée | ASR medium | RTF | LLM 7B Q4 | charg.+prompt | gén. | t/s |
+|---|---|---|---|---|---|---|
+| 5 min | 122,1 s | 0,41 | 13,6 s | 10,4 s | 3,3 s | 30,0 |
+| 10 min | 232,7 s | 0,39 | 13,8 s | 10,5 s | 3,3 s | 28,4 |
+| 30 min | 695,0 s | 0,39 | 24,2 s | 18,5 s | 5,7 s | 23,4 |
+
+**GPU** (RTX 4070 Ti SUPER) :
+
+| Durée | ASR medium | RTF | LLM 7B Q4 | charg.+prompt | gén. | t/s |
+|---|---|---|---|---|---|---|
+| 5 min | 5,4 s | 0,02 | 3,7 s | 1,7 s | 2,1 s | 53,1 |
+| 10 min | 9,2 s | 0,02 | 3,5 s | 1,4 s | 2,1 s | 40,7 |
+| 30 min | 25,3 s | 0,01 | 4,5 s | 2,0 s | 2,5 s | 52,7 |
+
+- **ASR medium** : CPU ≈ **2,5× temps réel** (RTF 0,39) — corrige
+  l'estimation « ~1× » du §1 ; **GPU ≈ 55–70× temps réel** (RTF
+  0,01–0,02).
+- **LLM 7B Q4** : le « chargement+prompt » suit la taille de la
+  transcription (10,4 → 10,5 → 18,5 s sur CPU ; ~1,5–2 s sur GPU —
+  chargement VRAM quasi nul) ; la génération tient **~23–30 t/s sur
+  CPU** (léger repli quand le prompt grossit — KV cache) et
+  **~41–53 t/s sur GPU** (flash attention).
+- **Critère F4 (< 60 s / 10 min)** : **atteint sur GPU** — 10 min
+  traitée en **12,7 s** (ASR 9,2 s + LLM 3,5 s, 4,7× de marge) ;
+  **non atteint sur CPU** (246,5 s, ≈ 2,4× temps réel). La cible est
+  une cible GPU — la 4070 Ti la tient.
+- **Non mesuré** : tiny / base / small / large-v3-turbo (ASR) et les
+  autres LLM — modèles absents (pas de téléchargement surprise — F11
+  opt-in).

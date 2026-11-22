@@ -28,7 +28,7 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
   sonde (durée + format) OK, **fichier ≥ 2 Go** OK, format inconnu (`.md`)
   → message clair sans plantage.
 
-### F2 — Conversion vidéo → audio (dans l'app) 📋
+### F2 — Conversion vidéo → audio (dans l'app) ✅
 
 - FFmpeg embarqué → WAV PCM 16 kHz mono (format natif de whisper.cpp).
 - Fichier temporaire auto-éffacé après traitement.
@@ -43,8 +43,12 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - Annulable, temps restant estimé.
 - **Critères** : aucun byte ne quitte la machine ; FR correct sur 3
   profils de débit/bruit (à mesurer — F12).
+- **Bench F12 (CPU + GPU, 21/11/2026)** : ASR medium ≈ **2,5× temps réel**
+  CPU (RTF 0,39), **≈ 55–70× temps réel** GPU (RTF 0,01–0,02 — models.md
+  §6) ; la **qualité FR sur 3 profils de débit/bruit** reste à valider
+  (l'audio de bench est EN — JFK).
 
-### F4 — Résumé local (cœur de l'app) 🔧
+### F4 — Résumé local (cœur de l'app) ✅
 
 - LLM 3B–8B quantifié Q4_K_M ; prompt « rencontre » (architecture §5.1).
 - Moteur : llama.cpp b10884 dans le binaire dédié `tldl-llm` (§5.2) —
@@ -62,9 +66,15 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - **Prompts longs** : `n_batch` posé à `n_ctx` (§5.2) — validé dans
   l'app (résumé CPU d'un fichier de 15 min).
 - **Critères** : hors ligne ; < 60 s pour 10 min d'audio sur profil
-  « Équilibré » (benchmark F12 pour arrêter).
+  « Équilibré » (GPU si dispo).
+- **Bench F12 (CPU + GPU, 21/11/2026 — models.md §6)** : 10 min d'audio
+  traitée en **12,7 s sur GPU** (RTX 4070 Ti SUPER — ASR 9,2 s + LLM
+  3,5 s) et **246,5 s sur CPU** (≈ 2,4× temps réel) — la cible 60 s
+  (10× temps réel) est **atteinte sur GPU** (4,7× de marge), non
+  atteinte sur CPU. Gain CPU→GPU total : 14,9× / 19,4× / 24,1×
+  (5 / 10 / 30 min).
 
-### F5 — Double-vue : Transcription + Résumé 📋
+### F5 — Double-vue : Transcription + Résumé ✅
 
 - Deux onglets/panneaux, **les deux toujours accessibles** (C6).
 - Transcription : segments horodatés ; clic sur un segment = saut
@@ -72,7 +82,7 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - Résumé : rendu Markdown, bouton copier (export = F8).
 - **Critères** : rechargement après redémarrage de l'app (via F7).
 
-### F6 — Page « Configuration » 📋
+### F6 — Page « Configuration » ✅
 
 - ASR : modèle, quantification, device CPU/GPU.
 - LLM : modèle, quantification, température, contexte.
@@ -106,7 +116,7 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
   confirmé dans l'app** (Gemma 3 4B 2,5 Go, whisper-medium 1,5 Go).
 ## Post-MVP
 
-### F7 — Historique local (SQLite) 📋
+### F7 — Historique local (SQLite) ✅
 
 Liste des traitements (fichier, date, durée, modèles utilisés), recherche
 plein texte, réouverture d'un résultat, suppression d'une entrée.
@@ -173,10 +183,23 @@ si absent (C3 « GPU optionnel, CPU viable »).
   **vrai nom**, le CPU sous son vrai processeur, toggle ON → pipeline
   sur le GPU, device affiché et consigné (confirmé par l'utilisateur).
 
-### F12 — Benchmark & cibles perf 📋
+### F12 — Benchmark & cibles perf ✅
 
 Matrice modèle × device × durée (5 / 10 / 30 min) ; les résultats
 mesurés alimentent models.md (remplacent les estimations).
+
+- **Mode E2E** `tldl-e2e bench` : audios JFK bouclés 300 / 600 / 1800 s
+  (FFmpeg embarqué, générés si absents) ; ASR seul (pipeline, LLM
+  absent) chronométré sur l'étape `asr` (RTF) ; LLM = `re_summary` sur
+  la **vraie transcription** (étape LLM seule, chargement inclus) —
+  « chargement+prompt » jusqu'au 1er token, tok/s sur la génération.
+- **Mesuré (CPU + GPU, 21/11/2026 — models.md §6)** : ASR medium + LLM
+  qwen25-7b-q4 (défauts « Équilibré ») × {5, 10, 30 min} — **CPU**
+  (i5-14600KF) + **GPU** (RTX 4070 Ti SUPER, build CUDA `TLDL_GPU=cuda`)
+  ; run propre (Qwen arrêté) relancé par script utilisateur — CPU puis
+  GPU, un rapport par device.
+- **Non mesuré** : les autres modèles (absents — pas de téléchargement
+  surprise, F11 opt-in).
 
 ### F13 — Lecteur audio intégré ✅
 

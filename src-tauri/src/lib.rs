@@ -3,7 +3,7 @@ mod commands;
 mod config;
 pub mod gpu;
 pub mod llm;
-mod media;
+pub mod media;
 pub mod models;
 pub mod pipeline;
 pub mod storage;
