@@ -7,19 +7,19 @@ Synthèse locale d'audio/vidéo : import d'un fichier → **transcription**
 
 ![tldl](./docs/img/tldl-start.png)
 
-Résultat d'un transcription
+Résultat d'une transcription
 
 ![tldl](./docs/img/tldl-transcription.png)
 
-Résultat d'un résumé pour le context attendu
+Résultat d'un résumé pour le contexte attendu
 
 ![tldl](./docs/img/tldl-summary.png)
 
-Historique de vos transcription
+Historique de vos transcriptions
 
 ![tldl](./docs/img/tldl-history.png)
 
-Création de contexts personnalisés pour vos résumés
+Création de contextes personnalisés pour vos résumés
 
 ![tldl](./docs/img/tldl-context.png)
 
