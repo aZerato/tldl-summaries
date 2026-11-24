@@ -20,6 +20,12 @@ pub struct Segment {
     /// Fin du segment, en secondes
     pub end: f64,
     pub text: String,
+    /// F9 : intervenante du segment (« Intervenante 1 », …) — diarisation.
+    /// `None` si la séparation est désactivée ou indisponible (modèle absent)
+    /// ; le champ est absent du JSON dans ce cas (pas de migration : lignes
+    /// antérieures relues par `#[serde(default)]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
 }
 
 // `Deserialize` : la transcription est relue depuis `records.transcription_json`
@@ -46,9 +52,11 @@ pub struct AsrConfig {
 mod ffi {
     use std::os::raw::{c_char, c_int};
 
-    /// Poignée opaque (côté shim C).
+    /// Poignée opaque (côté shim C). Le champ `u8` (non vide) est requis :
+    /// un ZST n'est pas FFI-safe — le type n'existe que derrière
+    /// `*mut`/`*const TldlWhisper` (jamais déréférencé par valeur).
     #[repr(transparent)]
-    pub struct TldlWhisper;
+    pub struct TldlWhisper(u8);
 
     // Lien par `#[link]` (et non `build.rs`) : les directives du build script
     // s'appliqueraient à *tous* les cibles du paquet, et le binaire
@@ -210,6 +218,7 @@ impl Engine {
                 start: t0 as f64 / 100.0,
                 end: t1 as f64 / 100.0,
                 text,
+                speaker: None,
             });
         }
 
@@ -309,8 +318,9 @@ fn run(
 }
 
 /// Lit un fichier WAV RIFF : retourne (échantillons s16 LE, fréquence Hz).
-/// Contrainte : PCM 16-bit mono (sinon erreur).
-fn read_wav(path: &Path) -> Result<(Vec<i16>, u32), String> {
+/// Contrainte : PCM 16-bit mono (sinon erreur). Public : le pipeline en
+/// relit la WAV pour la diarisation (F9), sur les mêmes échantillons.
+pub fn read_wav(path: &Path) -> Result<(Vec<i16>, u32), String> {
     let b = std::fs::read(path).map_err(|e| e.to_string())?;
     if b.len() < 44 || &b[0..4] != b"RIFF" || &b[8..12] != b"WAVE" {
         return Err("fichier non WAV (en-tête RIFF/WAVE manquant)".into());

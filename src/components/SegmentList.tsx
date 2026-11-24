@@ -21,6 +21,16 @@ export default function SegmentList({
 }: Props) {
   if (segments.length === 0) return <p className="muted">Aucun segment.</p>;
   const interactive = onSeek !== undefined;
+  // F9 : une teinte par intervenante (au fil de la transcription).
+  const colorOf = new Map<string, string>();
+  for (const s of segments) {
+    if (s.speaker && !colorOf.has(s.speaker)) {
+      colorOf.set(
+        s.speaker,
+        `var(--spk-${colorOf.size % 4})`,
+      );
+    }
+  }
   return (
     <ul className="segments">
       {segments.map((s, i) => (
@@ -48,6 +58,14 @@ export default function SegmentList({
           }
         >
           <span className="segment-time">{fmt(s.start)}</span>
+          {s.speaker && (
+            <span
+              className="segment-speaker"
+              style={{ color: colorOf.get(s.speaker) }}
+            >
+              {s.speaker}
+            </span>
+          )}
           <span>{s.text}</span>
         </li>
       ))}

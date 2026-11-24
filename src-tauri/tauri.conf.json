@@ -32,7 +32,8 @@
   "bundle": {
     "active": true,
     "resources": [
-      "../assets/ffmpeg/"
+      "../assets/ffmpeg/",
+      "../assets/onnxruntime/"
     ],
     "icon": [
       "icons/icon.png",

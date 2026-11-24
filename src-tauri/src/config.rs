@@ -20,6 +20,11 @@ pub struct Config {
     /// CPU (avec note) si la build ou la machine n'en a pas.
     #[serde(default)]
     pub use_gpu: bool,
+    /// F9 : séparation des intervenants (diarisation) activée. Le nombre
+    /// d'intervenants (auto / N) n'est **pas** persisté ici : il est demandé
+    /// au moment de la transcription (argument `run_pipeline`).
+    #[serde(default)]
+    pub diarize: bool,
 }
 
 impl Default for Config {
@@ -31,6 +36,7 @@ impl Default for Config {
             language: "auto".into(),
             temperature: 0.3,
             use_gpu: false,
+            diarize: false,
         }
     }
 }

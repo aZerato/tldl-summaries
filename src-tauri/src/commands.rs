@@ -34,6 +34,9 @@ pub async fn run_pipeline(
     // `None`/valeur nulle = fichier complet (le pipeline borne à la sonde).
     section_start: Option<f64>,
     section_end: Option<f64>,
+    // F9 : nombre d'intervenants demandé au moment de la transcription ;
+    // `0` = auto (détecté par le clustering).
+    diar_speakers: u8,
 ) -> Result<pipeline::PipelineOutput, String> {
     // F15 : résolution du contexte (nom pour la consignation, instructions
     // pour le prompt **LLM — le résumé**, jamais la transcription) avant le
@@ -50,6 +53,10 @@ pub async fn run_pipeline(
         }
         None => (String::new(), "Contexte par défaut".to_string()),
     };
+    // F9 : le on/off se lit dans la config courante (comme le GPU — pas un
+    // argument de commande) ; le nombre d'intervenants est un argument de
+    // commande (demandé au moment de la transcription, 0 = auto).
+    let diarize = state.config.lock().unwrap().diarize;
     let (asr_model, llm_model, language, temperature, use_gpu) = {
         let c = state.config.lock().unwrap();
         (
@@ -95,6 +102,8 @@ pub async fn run_pipeline(
             context_instructions,
             section_start,
             section_end,
+            diarize,
+            diar_speakers,
         };
         pipeline::run(&input_copy, &opts, &mut |p| {
             let _ = app.emit(

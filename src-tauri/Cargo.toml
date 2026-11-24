@@ -61,3 +61,13 @@ reqwest = { version = "0.13", default-features = false, features = ["blocking", 
 # sans dépendance système).
 rusqlite = { version = "0.38", features = ["bundled"] }
 dirs = "5"
+# Diarisation (F9) : ONNX Runtime chargé **au runtime** (`load-dynamic` —
+# `ort::init_from(<prébuild>)` dlopen `assets/onnxruntime/` au 1ᵉʳ usage,
+# pattern FFmpeg de media.rs). Pas de lien statique ni de header.
+# 2.0.0-rc.15 : la 1.x (1.16.3) est yankée sur crates.io — seul la branche
+# rc est disponible (mêmes `load-dynamic` + `ORT_DYLIB_PATH`, API safe).
+# `api-31` : niveau d'API C requis — le prébuild embarqué doit l'atteindre.
+ort = { version = "2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-31", "ndarray"] }
+# Sortie `embs` en `ndarray::ArrayViewD` (feature `ndarray` de `ort`) — la
+# version 0.17.2 est déjà verrouillée dans Cargo.lock par `ort` lui-même.
+ndarray = "0.17"

@@ -11,6 +11,11 @@
   --accent-line: rgba(255, 138, 30, 0.4);
   --border: #2b2e35;
   --error: #ff6b6b;
+  /* F9 : teintes des intervenants (par ordre d'apparition). */
+  --spk-0: #ff8a1e;
+  --spk-1: #5aa2ff;
+  --spk-2: #4fd08c;
+  --spk-3: #e884c9;
 }
 
 * {
@@ -391,6 +396,14 @@ pre.markdown {
   color: var(--accent);
   font-variant-numeric: tabular-nums;
   min-width: 42px;
+}
+
+/* F9 : badge intervenante du segment (teinte par ordre d'apparition). */
+.segment-speaker {
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 118px;
 }
 
 /* ── Cartes & modèles ─────────────────────────────────────────────── */

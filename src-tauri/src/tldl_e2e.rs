@@ -59,6 +59,18 @@
 //! [.!?]). Transcription de test **longue** (≈ 700 tokens — au-delà du
 //! `n_batch` 512, cf. régression `GGML_ASSERT(n_tokens_all <= n_batch)`).
 //! Modèle absent → ignorée (exit 0), comme les autres modes.
+//!   tldl-e2e bench
+//! Fais passer le **benchmark F12** (matrice durée × modèle) : audios
+//! `bench_{300,600,1800}.wav` (boucle du clip JFK vendorisé via le FFmpeg
+//! embarqué — générés si absents, dans `TLDL_E2E_BENCH_DIR`, défaut
+//! `<temp>\tldl-bench`) ; pour chaque durée : ASR seul (pipeline avec LLM
+//! absent, chronométré sur les étapes) puis **re-résumé** de la vraie
+//! transcription produite (étape LLM seule, `pipeline::re_summary`).
+//! `TLDL_E2E_BENCH_ASR` (défaut `medium`), `TLDL_E2E_BENCH_LLM` (défaut
+//! `qwen25-7b-q4`), `TLDL_E2E_BENCH_GPU=1` (résolu par `gpu::resolve`,
+//! bascule CPU si absent), `TLDL_E2E_BENCH_DURS` (liste de secondes,
+//! défaut `300,600,1800`). Modèles absents → refus (pas de
+//! téléchargement surprise — F11 est opt-in).
 //!
 //! Sans input valide : message d'information + exit 0 (aucun échec).
 
@@ -116,6 +128,11 @@ fn main() {
         run_llm_e2e();
         return;
     }
+    // Mode F12 : benchmark — matrice durée × modèle (ASR + LLM).
+    if argv.first().is_some_and(|a| a.as_str() == "bench") {
+        run_bench_e2e();
+        return;
+    }
 
     // `trim()` : les valeurs d'environnement (ou argv) peuvent apporter des
     // espaces parasites (ex. `set VAR=... && ...` sous cmd) qui cassent le
@@ -155,11 +172,29 @@ fn main() {
         env::set_var("TLDL_FFMPEG_DIR", &ffmpeg);
     }
 
+    // F9 : diarisation — `TLDL_E2E_DIAR` vide = off ; « N » (0 = auto) = on.
+    // Modèle absent → dégradation gracie (pas d'intervenant, `diarError`).
+    let diar = env::var("TLDL_E2E_DIAR").unwrap_or_default();
+    let diarize = !diar.is_empty();
+    let diar_speakers: u8 = diar.parse::<u8>().unwrap_or(0);
+    // Modèle ASR (idem `TLDL_E2E_ASR` du mode section) : « small » par défaut.
+    let asr_id = env::var("TLDL_E2E_ASR")
+        .unwrap_or_else(|_| String::from("small"))
+        .trim()
+        .to_string();
+
     println!("E2E : {}", input);
-    println!("      asr=small  llm={llm}  langue=auto  gpu=false");
+    println!(
+        "      asr={asr_id}  llm={llm}  langue=auto  gpu=false  diar={}",
+        if diarize {
+            if diar_speakers == 0 { "auto" } else { &diar }
+        } else {
+            "off"
+        }
+    );
 
     let opts = PipelineOptions {
-        asr_model: "small".into(),
+        asr_model: asr_id,
         llm_model: llm,
         language: "auto".into(),
         temperature: 0.3,
@@ -172,6 +207,8 @@ fn main() {
         // à la sonde : 0/0 = « tout »).
         section_start: 0.0,
         section_end: 0.0,
+        diarize,
+        diar_speakers,
     };
 
     let mut last_step = String::new();
@@ -194,7 +231,16 @@ fn main() {
     println!("langue : {}", o.transcription.language);
     println!("segments : {}", o.transcription.segments.len());
     for s in &o.transcription.segments {
-        println!("  [{:>7.2}s - {:>7.2}s] {}", s.start, s.end, s.text);
+        match &s.speaker {
+            // F9 : étiquette d'intervenant (si diarisation active).
+            Some(sp) => {
+                println!("  [{:>7.2}s - {:>7.2}s] [{sp}] {}", s.start, s.end, s.text)
+            }
+            None => println!("  [{:>7.2}s - {:>7.2}s] {}", s.start, s.end, s.text),
+        }
+    }
+    if let Some(e) = &o.diar_error {
+        println!("diarisation : {e}");
     }
     println!("texte :");
     println!("  {}", o.transcription.text);
@@ -1033,6 +1079,7 @@ fn run_section_e2e(rest: &[String]) {
     }
 
     // Le LLM est optionnel ici : absent → dégradation gracie (summary_error).
+    // F9 : off ici — le test de section compare des textes, pas d'intervenants.
     let mk = |section_start: f64, section_end: f64| PipelineOptions {
         asr_model: asr_id.clone(),
         llm_model: "qwen25-7b-q4".into(),
@@ -1045,6 +1092,8 @@ fn run_section_e2e(rest: &[String]) {
         context_instructions: String::new(),
         section_start,
         section_end,
+        diarize: false,
+        diar_speakers: 0,
     };
 
     let mut last_step = String::new();
@@ -1291,4 +1340,238 @@ fn run_llm_e2e() {
     println!(
         "E2E llm OK : passe réelle « 10 phrases » — EOS naturel à {produced} tokens, sans méta-préambule, {sentences} phrase(s)"
     );
+}
+
+/// Mode F12 : benchmark — matrice durée × modèle (ASR + LLM).
+///
+/// Audios : `bench_{d}.wav` dans `TLDL_E2E_BENCH_DIR` (défaut
+/// `<temp>\tldl-bench`) — générés si absents : boucle du clip JFK
+/// vendorisé (vraie parole) via le FFmpeg embarqué, même source que
+/// l'E2E `section`. Pour chaque durée :
+/// - **ASR** : pipeline complet avec LLM volontairement absent — la
+///   phase LLM est nulle ; la transcription est chronométrée entre la
+///   1ʳᵉ et la dernière étiquette « asr » des étapes du pipeline
+///   (inclut le chargement du modèle — quelques secondes).
+/// - **LLM** : re-résumé (`pipeline::re_summary`) de la **vraie
+///   transcription** produite ci-dessus — même protocole que l'app
+///   (relance du binaire `tldl-llm` : le coût de chargement est inclus,
+///   comme dans l'app) ; « chargement+prompt » = jusqu'au 1er token,
+///   tok/s sur la génération.
+///
+/// Variables :
+/// - `TLDL_E2E_BENCH_DIR` : dossier des audios (défaut `<temp>\tldl-bench`).
+/// - `TLDL_E2E_BENCH_SRC` : clip source (défaut : le jfk.wav vendorisé).
+/// - `TLDL_E2E_BENCH_ASR` : modèle ASR (défaut `medium`).
+/// - `TLDL_E2E_BENCH_LLM` : modèle LLM (défaut `qwen25-7b-q4`).
+/// - `TLDL_E2E_BENCH_GPU` : `1` = demander le GPU — résolu par
+///   `gpu::resolve` comme dans l'app (bascule CPU si absent).
+/// - `TLDL_E2E_BENCH_DURS` : durées en secondes, séparées par des
+///   virgules (défaut `300,600,1800`).
+///
+/// Modèles absents : refus net — pas de téléchargement surprise (F11 est
+/// opt-in ; le dépôt manuel est la voie documentée).
+fn run_bench_e2e() {
+    use std::time::Instant;
+    use tldl_lib::{gpu, media, models, pipeline};
+
+    fn env_str(k: &str, def: &str) -> String {
+        env::var(k).unwrap_or_else(|_| def.to_string()).trim().to_string()
+    }
+
+    let dir = env_str("TLDL_E2E_BENCH_DIR", "");
+    let bench_dir = if dir.is_empty() {
+        std::env::temp_dir().join("tldl-bench")
+    } else {
+        std::path::PathBuf::from(dir)
+    };
+    let asr_model = env_str("TLDL_E2E_BENCH_ASR", "medium");
+    let llm_model = env_str("TLDL_E2E_BENCH_LLM", "qwen25-7b-q4");
+    let use_gpu = env_str("TLDL_E2E_BENCH_GPU", "0") == "1";
+    let durs: Vec<u64> = env_str("TLDL_E2E_BENCH_DURS", "300,600,1800")
+        .split(',')
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| {
+            s.trim().parse::<u64>().unwrap_or_else(|_| {
+                eprintln!("E2E bench : durée illisible — « {s} » (secondes attendues)");
+                std::process::exit(1);
+            })
+        })
+        .collect();
+
+    // Modèles : pas de téléchargement surprise (F11 est opt-in).
+    let asr_ok = models::model_path(models::ModelKind::Asr, &asr_model).exists();
+    let llm_ok = models::model_path(models::ModelKind::Llm, &llm_model).exists();
+    if !asr_ok || !llm_ok {
+        eprintln!(
+            "E2E bench impossible : asr={} ({})  llm={} ({}) — déposez les \
+             fichiers dans models/ (récupération opt-in, F11)",
+            asr_model,
+            if asr_ok { "présent" } else { "ABSENT" },
+            llm_model,
+            if llm_ok { "présent" } else { "ABSENT" },
+        );
+        std::process::exit(1);
+    }
+
+    // Device résolu comme dans l'app (F10) : le **vrai nom** du device,
+    // bascule CPU si la build / la machine n'a pas de GPU.
+    let dev = gpu::resolve(use_gpu);
+    let n_gpu_layers = dev.n_gpu_layers;
+
+    // Clip source (vraie parole) : override, sinon le jfk.wav vendorisé.
+    let src_override = env_str("TLDL_E2E_BENCH_SRC", "");
+    let src = if !src_override.is_empty() {
+        std::path::PathBuf::from(src_override)
+    } else {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vendor/whisper.cpp/samples/jfk.wav");
+        if repo.exists() {
+            repo
+        } else {
+            // Exécuté depuis la racine du repo (cargo run).
+            std::path::PathBuf::from("vendor/whisper.cpp/samples/jfk.wav")
+        }
+    };
+    if !src.exists() {
+        eprintln!("E2E bench impossible : clip source absent — {}", src.display());
+        std::process::exit(1);
+    }
+
+    // Audios de bench : générés si absents (boucle du clip, FFmpeg embarqué).
+    let _ = std::fs::create_dir_all(&bench_dir);
+    for d in &durs {
+        let p = bench_dir.join(format!("bench_{d}.wav"));
+        if p.exists() {
+            continue;
+        }
+        let mut cmd = std::process::Command::new(media::resolve("ffmpeg"));
+        cmd.args(["-hide_banner", "-loglevel", "error", "-stream_loop", "-1", "-i"]);
+        cmd.arg(&src);
+        cmd.arg("-t").arg(d.to_string()).arg("-y").arg(&p);
+        match cmd.output() {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                let e = String::from_utf8_lossy(&o.stderr);
+                eprintln!("E2E bench impossible : génération de l'audio : {e}");
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!(
+                    "E2E bench impossible : FFmpeg introuvable ({e}) — \
+                     TLDL_FFMPEG_DIR ou assets/ffmpeg/"
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+
+    println!(
+        "Bench F12 — device : {}   asr={}   llm={}",
+        dev.name, asr_model, llm_model
+    );
+    if dev.fallback {
+        println!("  note : GPU demandé mais absent — bascule CPU");
+    }
+
+    for d in durs {
+        let wav = bench_dir.join(format!("bench_{d}.wav"));
+
+        // --- ASR : pipeline complet, LLM absent → la phase LLM est nulle.
+        let mut t_asr0: Option<Instant> = None;
+        let mut t_asr1: Option<Instant> = None;
+        // F9 : off — chronométrie ASR seule (la diarisation n'est pas un
+        // critère de la cible C3 ici ; le coût diar est un bench F12 dédié).
+        let opts = pipeline::PipelineOptions {
+            asr_model: asr_model.clone(),
+            llm_model: "absent-bench".into(), // ASR seul, chronométré.
+            language: "auto".into(),
+            temperature: 0.3,
+            use_gpu: dev.use_gpu,
+            n_gpu_layers,
+            device: dev.name.clone(),
+            device_note: None,
+            context_instructions: String::new(),
+            section_start: 0.0,
+            section_end: 0.0,
+            diarize: false,
+            diar_speakers: 0,
+        };
+        let res = pipeline::run(&wav.to_string_lossy(), &opts, &mut |p| {
+            if p.step == "asr" {
+                if t_asr0.is_none() {
+                    t_asr0 = Some(Instant::now());
+                }
+                t_asr1 = Some(Instant::now());
+            }
+        });
+        let o = match res {
+            Ok(o) => o,
+            Err(e) => {
+                eprintln!("ÉCHEC bench ({d}s) : pipeline ASR : {e}");
+                std::process::exit(1);
+            }
+        };
+        if o.transcription.segments.is_empty() {
+            eprintln!("ÉCHEC bench ({d}s) : aucun segment produit");
+            std::process::exit(1);
+        }
+        let asr_secs = t_asr1
+            .expect("étape « asr »")
+            .duration_since(t_asr0.expect("étape « asr »"))
+            .as_secs_f64();
+        let rtf = asr_secs / d as f64;
+        let words = o.transcription.text.split_whitespace().count();
+
+        // --- LLM : re-résumé de la vraie transcription (étape LLM seule).
+        let t_l0 = Instant::now();
+        let mut t_first_tok: Option<Instant> = None;
+        let mut produced: u32 = 0;
+        let llm_res = pipeline::re_summary(
+            &o.transcription,
+            &llm_model,
+            0.3,
+            "",
+            n_gpu_layers,
+            &mut |p| {
+                if p.step == "llm" && p.position > 0.0 {
+                    if t_first_tok.is_none() {
+                        t_first_tok = Some(Instant::now());
+                    }
+                    produced = p.position as u32;
+                }
+            },
+        );
+        let llm_secs = t_l0.elapsed().as_secs_f64();
+        let (prep_secs, gen_secs, gen_tps) = match t_first_tok {
+            Some(t) => {
+                let prep = t.elapsed().as_secs_f64();
+                (
+                    prep,
+                    llm_secs - prep,
+                    produced as f64 / (llm_secs - prep).max(1e-3),
+                )
+            }
+            None => (llm_secs, 0.0, 0.0),
+        };
+
+        println!("  {d}s :");
+        println!(
+            "    ASR  {asr_secs:.1}s  (RTF {rtf:.2})  — texte ≈ {words} mots"
+        );
+        match llm_res {
+            Ok(_) => {
+                println!(
+                    "    LLM  {llm_secs:.1}s  — chargement+prompt {prep_secs:.1}s, gen {gen_secs:.1}s → {gen_tps:.1} t/s ({produced} tok)"
+                );
+                println!(
+                    "    total {total:.1}s",
+                    total = asr_secs + llm_secs,
+                );
+            }
+            Err(e) => {
+                println!("    LLM  : {e}");
+            }
+        }
+    }
+    println!("Bench F12 OK");
 }

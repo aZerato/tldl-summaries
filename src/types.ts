@@ -17,6 +17,9 @@ export interface Segment {
   start: number;
   end: number;
   text: string;
+  /** F9 : intervenante du segment (« Intervenante 1 »…) ; `undefined` si
+   *  pas de diarisation (désactivée ou modèle absent). */
+  speaker?: string;
 }
 
 export interface Transcription {
@@ -45,6 +48,9 @@ export interface PipelineOutput {
   /** F14 : fin de la section traitée, dans le fichier source (s) ;
    *  `= durationSecs` si le fichier complet a été traité. */
   sectionEnd: number;
+  /** F9 : note de dégradation de la diarisation — `null` si les
+   *  intervenants sont présents ou la séparation est désactivée. */
+  diarError: string | null;
 }
 
 /** Device de calcul ggml (F10). */
@@ -62,7 +68,7 @@ export interface Progress {
 
 export interface ModelInfo {
   id: string;
-  kind: "asr" | "llm";
+  kind: "asr" | "llm" | "diar";
   name: string;
   sizeMb: number;
   quant: string;
@@ -144,4 +150,8 @@ export interface AppConfig {
   language: string;
   temperature: number;
   useGpu: boolean;
+  /** F9 : séparation des intervenants (diarisation) activée. Le nombre
+   *  d'intervenants (auto / N) n'est pas persisté : il est demandé au
+   *  moment de la transcription (argument de `run_pipeline`). */
+  diarize: boolean;
 }

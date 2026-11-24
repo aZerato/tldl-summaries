@@ -34,6 +34,9 @@ export const runPipeline = (
   sectionStart: number | null,
   /** F14 : fin de section ; `null` ou `0` = jusqu'à la fin du fichier. */
   sectionEnd: number | null,
+  /** F9 : nombre d'intervenants demandé au moment de la transcription ;
+   *  `0` = auto (détecté par le clustering). */
+  diarSpeakers: number,
 ) =>
   invoke<PipelineOutput>("run_pipeline", {
     input,
@@ -43,6 +46,7 @@ export const runPipeline = (
     contextId: contextId === null ? null : contextId,
     sectionStart: sectionStart === null ? null : sectionStart,
     sectionEnd: sectionEnd === null ? null : sectionEnd,
+    diarSpeakers,
   });
 
 export const listModels = () => invoke<ModelInfo[]>("list_models");
@@ -151,6 +155,7 @@ export function toOutput(r: HistoryRecord): PipelineOutput {
     durationSecs: r.durationSecs,
     sectionStart: r.sectionStart,
     sectionEnd: r.sectionEnd,
+    diarError: null,
   };
 }
 

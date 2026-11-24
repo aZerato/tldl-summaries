@@ -134,9 +134,11 @@ extern "C" fn progress_cb(produced: c_int, max: c_int, user: *mut c_void) {
 mod ffi {
     use std::os::raw::{c_char, c_int, c_void};
 
-    /// Opaque : moteur llama.cpp (modèle + contexte + vocabulaire).
+    /// Opaque : moteur llama.cpp (modèle + contexte + vocabulaire). Le champ
+    /// `u8` (non vide) est requis — un ZST n'est pas FFI-safe ; le type
+    /// n'existe que derrière `*mut TldlLlama` (jamais déréférencé par valeur).
     #[repr(transparent)]
-    pub struct TldlLlama;
+    pub struct TldlLlama(u8);
 
     extern "C" {
         pub fn tldl_llama_load(

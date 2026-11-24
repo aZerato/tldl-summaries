@@ -28,7 +28,7 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
   sonde (durée + format) OK, **fichier ≥ 2 Go** OK, format inconnu (`.md`)
   → message clair sans plantage.
 
-### F2 — Conversion vidéo → audio (dans l'app) 📋
+### F2 — Conversion vidéo → audio (dans l'app) ✅
 
 - FFmpeg embarqué → WAV PCM 16 kHz mono (format natif de whisper.cpp).
 - Fichier temporaire auto-éffacé après traitement.
@@ -43,8 +43,12 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - Annulable, temps restant estimé.
 - **Critères** : aucun byte ne quitte la machine ; FR correct sur 3
   profils de débit/bruit (à mesurer — F12).
+- **Bench F12 (CPU + GPU, 21/11/2026)** : ASR medium ≈ **2,5× temps réel**
+  CPU (RTF 0,39), **≈ 55–70× temps réel** GPU (RTF 0,01–0,02 — models.md
+  §6) ; la **qualité FR sur 3 profils de débit/bruit** reste à valider
+  (l'audio de bench est EN — JFK).
 
-### F4 — Résumé local (cœur de l'app) 🔧
+### F4 — Résumé local (cœur de l'app) ✅
 
 - LLM 3B–8B quantifié Q4_K_M ; prompt « rencontre » (architecture §5.1).
 - Moteur : llama.cpp b10884 dans le binaire dédié `tldl-llm` (§5.2) —
@@ -62,9 +66,15 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - **Prompts longs** : `n_batch` posé à `n_ctx` (§5.2) — validé dans
   l'app (résumé CPU d'un fichier de 15 min).
 - **Critères** : hors ligne ; < 60 s pour 10 min d'audio sur profil
-  « Équilibré » (benchmark F12 pour arrêter).
+  « Équilibré » (GPU si dispo).
+- **Bench F12 (CPU + GPU, 21/11/2026 — models.md §6)** : 10 min d'audio
+  traitée en **12,7 s sur GPU** (RTX 4070 Ti SUPER — ASR 9,2 s + LLM
+  3,5 s) et **246,5 s sur CPU** (≈ 2,4× temps réel) — la cible 60 s
+  (10× temps réel) est **atteinte sur GPU** (4,7× de marge), non
+  atteinte sur CPU. Gain CPU→GPU total : 14,9× / 19,4× / 24,1×
+  (5 / 10 / 30 min).
 
-### F5 — Double-vue : Transcription + Résumé 📋
+### F5 — Double-vue : Transcription + Résumé ✅
 
 - Deux onglets/panneaux, **les deux toujours accessibles** (C6).
 - Transcription : segments horodatés ; clic sur un segment = saut
@@ -72,7 +82,7 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
 - Résumé : rendu Markdown, bouton copier (export = F8).
 - **Critères** : rechargement après redémarrage de l'app (via F7).
 
-### F6 — Page « Configuration » 📋
+### F6 — Page « Configuration » ✅
 
 - ASR : modèle, quantification, device CPU/GPU.
 - LLM : modèle, quantification, température, contexte.
@@ -106,7 +116,7 @@ Statuts : ✅ fait · 🔧 en cours · 📋 à faire · ⏳ à valider · 💡 i
   confirmé dans l'app** (Gemma 3 4B 2,5 Go, whisper-medium 1,5 Go).
 ## Post-MVP
 
-### F7 — Historique local (SQLite) 📋
+### F7 — Historique local (SQLite) ✅
 
 Liste des traitements (fichier, date, durée, modèles utilisés), recherche
 plein texte, réouverture d'un résultat, suppression d'une entrée.
@@ -130,9 +140,62 @@ plein texte, réouverture d'un résultat, suppression d'une entrée.
 Transcription : txt / md / srt (horodatée). Résumé : md / txt.
 Package JSON complet (traçabilité : modèles, versions, date).
 
-### F9 — Séparation des intervenants (diarisation) 💡
+### F9 — Séparation des intervenants (diarisation) ✅
 
-Plus lourde (pyannote / 3D-Speaker) ; à évaluer après le MVP.
+Un intervenant par segment de la transcription (« Intervenante 1 »,
+« Intervenante 2 »…) — qui a parlé quand. Le résumé (LLM) reçoit la
+transcription **avec les intervenants** : décisions et actions à venir
+attribuées.
+
+- **Moteur (ADR-008)** : ONNX Runtime **chargé au runtime** (feature
+  `load-dynamic` de `ort` — dlopen du prébuild embarqué
+  `assets/onnxruntime/<cible>/`, pattern FFmpeg de `media.rs` — pas de
+  lien statique ni de build par plateforme, C2) + modèle
+  d'embeddings d'intervenants (ONNX, **F11 opt-in**) + **clustering en
+  Rust** (k-moyennes cosinus ; détection auto par le **creux +
+  effondrement** de la courbe de fusion — `cargo test` :
+  `diar::tests`, golden JFK 1-voix). Écartés :
+  pyannote / 3D-Speaker — runtime Python + PyTorch (même raison que
+  faster-whisper, architecture.md §9).
+- **Modèle** : **Wespeaker ECAPA-TDNN 512** arrêté au bench F12 (export
+  ONNX `voxceleb_ECAPA512.onnx`, embedding 192-d, 24 Mo) — **CAM++
+  écarté** (embeddings de voix réelle quasi orthogonaux — cos 0,198
+  sur JFK ; cf. models.md §7).
+- **Pipeline** : après la transcription, **avant** le décalage de section
+  (la WAV porte la section : bornes 0-based), sur la même WAV 16 kHz —
+  frontend fbank Wespeaker bit-exact (`diar/fbank.rs`) → **un embedding
+  par segment** (l'intera utterance ; l'embedding d'utterance entière est
+  bien plus discriminatif que des fenêtres de 1,6 s — segments < 1 s sans
+  étiquette, dégradation gracie) → clustering.
+- **Réglages** : on/off « Séparation des intervenants » — champ
+  `diarize` de la config (lu par `run_pipeline`, comme le GPU — pas un
+  argument de commande) ; le nombre d'intervenants (auto / N) est demandé
+  **au moment de la transcription** (argument de commande
+  `diar_speakers`, 0 = auto, N = **exactement N** — pas persisté ; le
+  choix explicite de l'utilisateur fait foi).
+- **Dégradation gracie** : modèle absent, ONNX Runtime indisponible ou
+  inférence en échec → pas d'intervenant, aucun impact transcription ni
+  résumé (même pattern que LLM absent — F4) ; la raison remonte en
+  bannière (`diarError` du résultat).
+- **Consignation** : champ `speaker` dans le JSON des segments
+  (`transcription_json` — JSON libre, pas de migration : `Option`,
+  absent du JSON si `None`) ; préservé au re-résumé (F16) et à la
+  section (F14) ; affiché dans l'historique (F7).
+- **UI** : transcription — option « Intervenants » (auto / N) +
+  intervenant par segment (teinte par ordre d'apparition +
+  « Intervenante N ») ; Réglages — carte
+  « Intervenants — séparation (F9) » (on/off + téléchargement du modèle
+  ONNX) ; barre de progression — étape « Séparation des
+  intervenants… » ; résultat — badge par segment.
+- **C3** : CPU viable — **7 ms/segment** ORT (bench F12, boulangerie),
+  pas de GPU en v1 (optionnel plus tard : provider CUDA d'ONNX
+  Runtime).
+- **Critères (arrêté au bench F12)** : étiquetage correct sur un audio
+  **2 intervenants** — boulangerie auto/N=2 → **2** (E2E), JFK 1-voix
+  auto → **1** (pas de scission — golden `diar::tests`), coût mesuré
+  (7 ms/segment), creux + effondrement arrêtés (`MIN_GAP` = 0,05,
+  `COLLAPSE_RATIO` = 0,55 — models.md §7), N forcé = **exactement N**,
+  modèle absent → dégradation gracie.
 
 ### F10 — Accélération GPU ✅
 
@@ -173,10 +236,23 @@ si absent (C3 « GPU optionnel, CPU viable »).
   **vrai nom**, le CPU sous son vrai processeur, toggle ON → pipeline
   sur le GPU, device affiché et consigné (confirmé par l'utilisateur).
 
-### F12 — Benchmark & cibles perf 📋
+### F12 — Benchmark & cibles perf ✅
 
 Matrice modèle × device × durée (5 / 10 / 30 min) ; les résultats
 mesurés alimentent models.md (remplacent les estimations).
+
+- **Mode E2E** `tldl-e2e bench` : audios JFK bouclés 300 / 600 / 1800 s
+  (FFmpeg embarqué, générés si absents) ; ASR seul (pipeline, LLM
+  absent) chronométré sur l'étape `asr` (RTF) ; LLM = `re_summary` sur
+  la **vraie transcription** (étape LLM seule, chargement inclus) —
+  « chargement+prompt » jusqu'au 1er token, tok/s sur la génération.
+- **Mesuré (CPU + GPU, 21/11/2026 — models.md §6)** : ASR medium + LLM
+  qwen25-7b-q4 (défauts « Équilibré ») × {5, 10, 30 min} — **CPU**
+  (i5-14600KF) + **GPU** (RTX 4070 Ti SUPER, build CUDA `TLDL_GPU=cuda`)
+  ; run propre (Qwen arrêté) relancé par script utilisateur — CPU puis
+  GPU, un rapport par device.
+- **Non mesuré** : les autres modèles (absents — pas de téléchargement
+  surprise, F11 opt-in).
 
 ### F13 — Lecteur audio intégré ✅
 

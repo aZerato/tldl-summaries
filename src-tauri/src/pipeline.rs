@@ -4,12 +4,12 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{asr, llm, media};
+use crate::{asr, diar, llm, media};
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Progress {
-    /// "probe" | "convert" | "asr" | "llm" | "done"
+    /// "probe" | "convert" | "asr" | "diar" | "llm" | "done"
     pub step: String,
     /// Position (secondes pour convert/asr, tokens pour llm, 0 sinon)
     pub position: f64,
@@ -41,6 +41,10 @@ pub struct PipelineOutput {
     /// F14 : fin de la section traitée, dans le fichier source (s).
     /// `= duration_secs` si le fichier complet a été traité.
     pub section_end: f64,
+    /// F9 : note de dégradation de la diarisation — `Some` si les
+    /// intervenants sont indisponibles (modèle/ONNX Runtime absent — même
+    /// pattern que le résumé indisponible).
+    pub diar_error: Option<String>,
 }
 
 pub struct PipelineOptions {
@@ -65,6 +69,10 @@ pub struct PipelineOptions {
     /// fichier complet.
     pub section_start: f64,
     pub section_end: f64,
+    /// F9 : séparation des intervenants activée (Réglages « Séparation »).
+    pub diarize: bool,
+    /// F9 : nombre d'intervenants forcé ; `0` = auto (détecté).
+    pub diar_speakers: u8,
 }
 
 /// Exécute le pipeline complet. `progress` est appelé à chaque étape.
@@ -162,7 +170,18 @@ fn run_inner(
         },
     )
     .map_err(|e| format!("ASR : {e}"))?;
-    for seg in &mut tr.segments {
+    // 3b) F9 : diarisation — **avant** le décalage de section (la WAV porte la
+    //     section : bornes 0-based), sur la même WAV que l'ASR.
+    let (speakers, diar_error) = if opts.diarize {
+        let bounds: Vec<(f64, f64)> =
+            tr.segments.iter().map(|s| (s.start, s.end)).collect();
+        let (sp, err) = run_diarization(wav, &bounds, opts, progress);
+        (sp, err)
+    } else {
+        (Vec::new(), None)
+    };
+    for (seg, sp) in tr.segments.iter_mut().zip(speakers) {
+        seg.speaker = sp;
         seg.start += section_start;
         seg.end += section_start;
     }
@@ -222,7 +241,77 @@ fn run_inner(
         duration_secs: info.duration_secs,
         section_start,
         section_end,
+        diar_error,
     })
+}
+
+/// F9 : diarisation de la transcription — `None` si non activée (géré par
+/// l'appelant). Sinon : lecture des échantillons de la WAV (la **section**),
+/// embeddings ONNX + clustering en Rust, majorité des fenêtres par segment.
+///
+/// Dégradation gracie (F9, même pattern que le LLM absent — F4) : modèle
+/// absent (F11 opt-in), ONNX Runtime indisponible ou inférence en échec →
+/// pas d'intervenant, aucun impact transcription ni résumé ; la raison est
+/// renvoyée (`diar_error`) pour la bannière de la page résultat.
+fn run_diarization(
+    wav: &std::path::Path,
+    bounds: &[(f64, f64)],
+    opts: &PipelineOptions,
+    progress: &mut dyn FnMut(&Progress),
+) -> (Vec<Option<String>>, Option<String>) {
+    let model = crate::models::model_path(
+        crate::models::ModelKind::Diar,
+        "wespeaker-ecapa-tdnn512",
+    );
+    if !model.exists() {
+        return (
+            vec![None; bounds.len()],
+            Some(
+                "Modèle d'intervenants introuvable — séparation désactivée pour \
+                 ce passage. Téléchargez-le (page Configuration) ou déposez \
+                 le .onnx dans models/."
+                    .to_string(),
+            ),
+        );
+    }
+    let (samples, _) = match asr::read_wav(wav) {
+        Ok(sw) => sw,
+        Err(e) => {
+            return (
+                vec![None; bounds.len()],
+                Some(format!("WAV illisible pour la diarisation : {e}")),
+            )
+        }
+    };
+    let mut d = match diar::Diarizer::load(&model) {
+        Ok(d) => d,
+        Err(e) => return (vec![None; bounds.len()], Some(e)),
+    };
+    // F9 : 0 = auto (le nombre est **détecté** — creux de la courbe de
+    // fusion + effondrement, `diar::auto_k`) ; N = forçage : exactement
+    // N clusters (le choix explicite de l'utilisateur fait foi).
+    let mode = if opts.diar_speakers == 0 {
+        diar::ClusterMode::Auto
+    } else {
+        diar::ClusterMode::Count {
+            n: opts.diar_speakers as u32,
+        }
+    };
+    progress(&Progress {
+        step: "diar".into(),
+        position: 0.0,
+        total: 1.0,
+    });
+    match d.run(&samples, bounds, &mode, &mut |done, total| {
+        progress(&Progress {
+            step: "diar".into(),
+            position: done as f64,
+            total: total as f64,
+        });
+    }) {
+        Ok(s) => (s, None),
+        Err(e) => (vec![None; bounds.len()], Some(e)),
+    }
 }
 
 /// Re-résumé sans re-transcription (F15/F16) : seule l'étape **LLM** est
@@ -305,6 +394,9 @@ mod e2e {
                 context_instructions: String::new(),
                 section_start: 0.0,
                 section_end: 0.0,
+                // F9 : inactif ici — pas de modèle d'intervenants attendu.
+                diarize: false,
+                diar_speakers: 0,
             },
             &mut progress,
         );
@@ -347,6 +439,7 @@ mod serde_tests {
                     start: 0.0,
                     end: 1.0,
                     text: "x".into(),
+                    speaker: Some("Intervenante 1".into()),
                 }],
                 language: "fr".into(),
             },
@@ -360,6 +453,7 @@ mod serde_tests {
             duration_secs: 42.0,
             section_start: 0.0,
             section_end: 42.0,
+            diar_error: None,
         };
         let v = serde_json::to_value(&out).unwrap();
         assert_eq!(v["summaryMarkdown"], "s");
@@ -373,6 +467,13 @@ mod serde_tests {
         // F14 : la section s'écrit bien au fil en camelCase.
         assert_eq!(v["sectionStart"], 0.0);
         assert_eq!(v["sectionEnd"], 42.0);
+        // F9 : l'intervenante du segment passe au fil en camelCase, et la
+        // note de dégradation aussi.
+        assert_eq!(
+            v["transcription"]["segments"][0]["speaker"],
+            "Intervenante 1"
+        );
+        assert_eq!(v["diarError"], serde_json::Value::Null);
         // Les champs snake_case ne doivent pas apparaître au fil.
         for k in [
             "summary_markdown",
@@ -383,6 +484,8 @@ mod serde_tests {
             "duration_secs",
             "section_start",
             "section_end",
+            "diar_error",
+            "speaker",
         ] {
             assert!(
                 v.get(k).is_none(),
@@ -422,8 +525,8 @@ mod section_tests {
         let mut tr = asr::Transcription {
             text: "t".into(),
             segments: vec![
-                asr::Segment { start: 0.0, end: 5.0, text: "a".into() },
-                asr::Segment { start: 10.0, end: 12.0, text: "b".into() },
+                asr::Segment { start: 0.0, end: 5.0, text: "a".into(), speaker: None },
+                asr::Segment { start: 10.0, end: 12.0, text: "b".into(), speaker: None },
             ],
             language: "fr".into(),
         };

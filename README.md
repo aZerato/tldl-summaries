@@ -3,6 +3,32 @@
 Synthèse locale d'audio/vidéo : import d'un fichier → **transcription**
 (whisper.cpp) + **résumé structuré** (llama.cpp), 100 % hors ligne.
 
+## Présentation
+
+![tldl](./docs/img/tldl-start.png)
+
+Résultat d'un transcription
+
+![tldl](./docs/img/tldl-transcription.png)
+
+Résultat d'un résumé pour le context attendu
+
+![tldl](./docs/img/tldl-summary.png)
+
+Historique de vos transcription
+
+![tldl](./docs/img/tldl-history.png)
+
+Création de contexts personnalisés pour vos résumés
+
+![tldl](./docs/img/tldl-context.png)
+
+Configuration
+
+![tldl](./docs/img/tldl-config-1.png)
+
+![tldl](./docs/img/tldl-config-2.png)
+
 👉 Référence du projet : [docs/](docs/) — architecture, features, modèles.
 
 ## Stack
@@ -11,6 +37,9 @@ Synthèse locale d'audio/vidéo : import d'un fichier → **transcription**
 - ASR : whisper.cpp v1.9.5 (vendu, build CMake + shim C)
 - LLM : llama.cpp b10884 — binaire dédié `tldl-llm` (GGUF, Q4_K_M)
 - Média : FFmpeg (sonde + conversion WAV 16 kHz mono), **embarqué**
+- Diarisation (F9) : **ONNX Runtime** (chargé au runtime, `load-dynamic`)
+  + frontend fbank Wespeaker + **clustering en Rust** — séparation des
+  intervenants 100 % locale (ADR-008)
 - Stockage : SQLite (rusqlite, bundled)
 
 ## Prérequis dev
@@ -52,6 +81,10 @@ Post-MVP : MVP (F1 → F6 + F11) fait, puis F1/F10/F13/F14/F15/F16/F19
   Markdown
 - **FFmpeg** : embarqué (`assets/ffmpeg/<cible>/`), localisé
   automatiquement — ni PATH, ni variable d'environnement requis
+- **Diarisation** (F9) : ONNX Runtime au runtime (prébuilds
+  `assets/onnxruntime/<cible>/`, pattern FFmpeg), modèle Wespeaker
+  ECAPA-TDNN (F11 opt-in), clustering en Rust — séparation des
+  intervenants, dégradation gracie si modèle/ORT absent
 - **Modèles** : catalogue local + téléchargement Hugging Face opt-in (F11)
 - **GPU** (F10) : build CUDA/Metal/Vulkan via `TLDL_GPU` (défaut CPU),
   détection des devices, bascule CPU si GPU absent
