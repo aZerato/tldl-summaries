@@ -57,6 +57,7 @@ export default function SettingsPage({ config, onChange }: Props) {
 
   const asr = models.filter((m) => m.kind === "asr");
   const llm = models.filter((m) => m.kind === "llm");
+  const diar = models.filter((m) => m.kind === "diar");
   const busy = dl !== null;
 
   function save(next: AppConfig) {
@@ -208,6 +209,41 @@ export default function SettingsPage({ config, onChange }: Props) {
                 {m.available ? "" : " · à télécharger"}
               </span>
               {m.isDefault && <span className="badge">défaut</span>}
+            </label>
+            {rowCell(m)}
+          </div>
+        ))}
+      </section>
+
+      <section className="card">
+        <h3>Intervenants — séparation (F9)</h3>
+        <p className="muted">
+          Qui a parlé quand : un intervenant par segment. Le modèle
+          d'embeddings est au format ONNX (F11 opt-in) ; sans lui, la
+          séparation se désactive d'elle-même (dégradation gracie).
+        </p>
+        <label className="field field-check">
+          <input
+            type="checkbox"
+            checked={config.diarize}
+            onChange={(e) => save({ ...config, diarize: e.target.checked })}
+          />
+          Séparer les intervenants
+        </label>
+        {config.diarize && (
+          <p className="muted">
+            Le nombre d'intervenants (auto / N) est demandé au moment de la
+            transcription (page d'import), pas réglé ici.
+          </p>
+        )}
+        {diar.map((m) => (
+          <div className="model-row" key={m.id}>
+            <label className="model-pick">
+              <span className="model-name">{m.name}</span>
+              <span className="muted">
+                {m.sizeMb} Mo
+                {m.available ? "" : " · à télécharger"}
+              </span>
             </label>
             {rowCell(m)}
           </div>

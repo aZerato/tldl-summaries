@@ -4,6 +4,7 @@ const STEPS: Record<string, string> = {
   probe: "Lecture du fichier…",
   convert: "Extraction de la piste audio…",
   asr: "Transcription…",
+  diar: "Séparation des intervenants…",
   llm: "Rédaction du résumé…",
   done: "Terminé.",
 };

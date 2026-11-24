@@ -11,6 +11,9 @@ Synthèse locale d'audio/vidéo : import d'un fichier → **transcription**
 - ASR : whisper.cpp v1.9.5 (vendu, build CMake + shim C)
 - LLM : llama.cpp b10884 — binaire dédié `tldl-llm` (GGUF, Q4_K_M)
 - Média : FFmpeg (sonde + conversion WAV 16 kHz mono), **embarqué**
+- Diarisation (F9) : **ONNX Runtime** (chargé au runtime, `load-dynamic`)
+  + frontend fbank Wespeaker + **clustering en Rust** — séparation des
+  intervenants 100 % locale (ADR-008)
 - Stockage : SQLite (rusqlite, bundled)
 
 ## Prérequis dev
@@ -52,6 +55,10 @@ Post-MVP : MVP (F1 → F6 + F11) fait, puis F1/F10/F13/F14/F15/F16/F19
   Markdown
 - **FFmpeg** : embarqué (`assets/ffmpeg/<cible>/`), localisé
   automatiquement — ni PATH, ni variable d'environnement requis
+- **Diarisation** (F9) : ONNX Runtime au runtime (prébuilds
+  `assets/onnxruntime/<cible>/`, pattern FFmpeg), modèle Wespeaker
+  ECAPA-TDNN (F11 opt-in), clustering en Rust — séparation des
+  intervenants, dégradation gracie si modèle/ORT absent
 - **Modèles** : catalogue local + téléchargement Hugging Face opt-in (F11)
 - **GPU** (F10) : build CUDA/Metal/Vulkan via `TLDL_GPU` (défaut CPU),
   détection des devices, bascule CPU si GPU absent

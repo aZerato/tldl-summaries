@@ -172,11 +172,29 @@ fn main() {
         env::set_var("TLDL_FFMPEG_DIR", &ffmpeg);
     }
 
+    // F9 : diarisation — `TLDL_E2E_DIAR` vide = off ; « N » (0 = auto) = on.
+    // Modèle absent → dégradation gracie (pas d'intervenant, `diarError`).
+    let diar = env::var("TLDL_E2E_DIAR").unwrap_or_default();
+    let diarize = !diar.is_empty();
+    let diar_speakers: u8 = diar.parse::<u8>().unwrap_or(0);
+    // Modèle ASR (idem `TLDL_E2E_ASR` du mode section) : « small » par défaut.
+    let asr_id = env::var("TLDL_E2E_ASR")
+        .unwrap_or_else(|_| String::from("small"))
+        .trim()
+        .to_string();
+
     println!("E2E : {}", input);
-    println!("      asr=small  llm={llm}  langue=auto  gpu=false");
+    println!(
+        "      asr={asr_id}  llm={llm}  langue=auto  gpu=false  diar={}",
+        if diarize {
+            if diar_speakers == 0 { "auto" } else { &diar }
+        } else {
+            "off"
+        }
+    );
 
     let opts = PipelineOptions {
-        asr_model: "small".into(),
+        asr_model: asr_id,
         llm_model: llm,
         language: "auto".into(),
         temperature: 0.3,
@@ -189,6 +207,8 @@ fn main() {
         // à la sonde : 0/0 = « tout »).
         section_start: 0.0,
         section_end: 0.0,
+        diarize,
+        diar_speakers,
     };
 
     let mut last_step = String::new();
@@ -211,7 +231,16 @@ fn main() {
     println!("langue : {}", o.transcription.language);
     println!("segments : {}", o.transcription.segments.len());
     for s in &o.transcription.segments {
-        println!("  [{:>7.2}s - {:>7.2}s] {}", s.start, s.end, s.text);
+        match &s.speaker {
+            // F9 : étiquette d'intervenant (si diarisation active).
+            Some(sp) => {
+                println!("  [{:>7.2}s - {:>7.2}s] [{sp}] {}", s.start, s.end, s.text)
+            }
+            None => println!("  [{:>7.2}s - {:>7.2}s] {}", s.start, s.end, s.text),
+        }
+    }
+    if let Some(e) = &o.diar_error {
+        println!("diarisation : {e}");
     }
     println!("texte :");
     println!("  {}", o.transcription.text);
@@ -1050,6 +1079,7 @@ fn run_section_e2e(rest: &[String]) {
     }
 
     // Le LLM est optionnel ici : absent → dégradation gracie (summary_error).
+    // F9 : off ici — le test de section compare des textes, pas d'intervenants.
     let mk = |section_start: f64, section_end: f64| PipelineOptions {
         asr_model: asr_id.clone(),
         llm_model: "qwen25-7b-q4".into(),
@@ -1062,6 +1092,8 @@ fn run_section_e2e(rest: &[String]) {
         context_instructions: String::new(),
         section_start,
         section_end,
+        diarize: false,
+        diar_speakers: 0,
     };
 
     let mut last_step = String::new();
@@ -1447,6 +1479,8 @@ fn run_bench_e2e() {
         // --- ASR : pipeline complet, LLM absent → la phase LLM est nulle.
         let mut t_asr0: Option<Instant> = None;
         let mut t_asr1: Option<Instant> = None;
+        // F9 : off — chronométrie ASR seule (la diarisation n'est pas un
+        // critère de la cible C3 ici ; le coût diar est un bench F12 dédié).
         let opts = pipeline::PipelineOptions {
             asr_model: asr_model.clone(),
             llm_model: "absent-bench".into(), // ASR seul, chronométré.
@@ -1459,6 +1493,8 @@ fn run_bench_e2e() {
             context_instructions: String::new(),
             section_start: 0.0,
             section_end: 0.0,
+            diarize: false,
+            diar_speakers: 0,
         };
         let res = pipeline::run(&wav.to_string_lossy(), &opts, &mut |p| {
             if p.step == "asr" {

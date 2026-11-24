@@ -381,11 +381,18 @@ export default function ResultPage({
           </p>
         )
       ) : (
-        <SegmentList
-          segments={segments}
-          onSeek={seekTo}
-          activeIndex={activeIndex}
-        />
+        <>
+          {result.diarError && (
+            <p className="muted" role="alert">
+              {result.diarError}
+            </p>
+          )}
+          <SegmentList
+            segments={segments}
+            onSeek={seekTo}
+            activeIndex={activeIndex}
+          />
+        </>
       )}
 
       {/* F15/F16 : résumés par contexte — chaque re-résumé d'un même

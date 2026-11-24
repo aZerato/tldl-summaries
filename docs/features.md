@@ -140,9 +140,62 @@ plein texte, réouverture d'un résultat, suppression d'une entrée.
 Transcription : txt / md / srt (horodatée). Résumé : md / txt.
 Package JSON complet (traçabilité : modèles, versions, date).
 
-### F9 — Séparation des intervenants (diarisation) 💡
+### F9 — Séparation des intervenants (diarisation) ✅
 
-Plus lourde (pyannote / 3D-Speaker) ; à évaluer après le MVP.
+Un intervenant par segment de la transcription (« Intervenante 1 »,
+« Intervenante 2 »…) — qui a parlé quand. Le résumé (LLM) reçoit la
+transcription **avec les intervenants** : décisions et actions à venir
+attribuées.
+
+- **Moteur (ADR-008)** : ONNX Runtime **chargé au runtime** (feature
+  `load-dynamic` de `ort` — dlopen du prébuild embarqué
+  `assets/onnxruntime/<cible>/`, pattern FFmpeg de `media.rs` — pas de
+  lien statique ni de build par plateforme, C2) + modèle
+  d'embeddings d'intervenants (ONNX, **F11 opt-in**) + **clustering en
+  Rust** (k-moyennes cosinus ; détection auto par le **creux +
+  effondrement** de la courbe de fusion — `cargo test` :
+  `diar::tests`, golden JFK 1-voix). Écartés :
+  pyannote / 3D-Speaker — runtime Python + PyTorch (même raison que
+  faster-whisper, architecture.md §9).
+- **Modèle** : **Wespeaker ECAPA-TDNN 512** arrêté au bench F12 (export
+  ONNX `voxceleb_ECAPA512.onnx`, embedding 192-d, 24 Mo) — **CAM++
+  écarté** (embeddings de voix réelle quasi orthogonaux — cos 0,198
+  sur JFK ; cf. models.md §7).
+- **Pipeline** : après la transcription, **avant** le décalage de section
+  (la WAV porte la section : bornes 0-based), sur la même WAV 16 kHz —
+  frontend fbank Wespeaker bit-exact (`diar/fbank.rs`) → **un embedding
+  par segment** (l'intera utterance ; l'embedding d'utterance entière est
+  bien plus discriminatif que des fenêtres de 1,6 s — segments < 1 s sans
+  étiquette, dégradation gracie) → clustering.
+- **Réglages** : on/off « Séparation des intervenants » — champ
+  `diarize` de la config (lu par `run_pipeline`, comme le GPU — pas un
+  argument de commande) ; le nombre d'intervenants (auto / N) est demandé
+  **au moment de la transcription** (argument de commande
+  `diar_speakers`, 0 = auto, N = **exactement N** — pas persisté ; le
+  choix explicite de l'utilisateur fait foi).
+- **Dégradation gracie** : modèle absent, ONNX Runtime indisponible ou
+  inférence en échec → pas d'intervenant, aucun impact transcription ni
+  résumé (même pattern que LLM absent — F4) ; la raison remonte en
+  bannière (`diarError` du résultat).
+- **Consignation** : champ `speaker` dans le JSON des segments
+  (`transcription_json` — JSON libre, pas de migration : `Option`,
+  absent du JSON si `None`) ; préservé au re-résumé (F16) et à la
+  section (F14) ; affiché dans l'historique (F7).
+- **UI** : transcription — option « Intervenants » (auto / N) +
+  intervenant par segment (teinte par ordre d'apparition +
+  « Intervenante N ») ; Réglages — carte
+  « Intervenants — séparation (F9) » (on/off + téléchargement du modèle
+  ONNX) ; barre de progression — étape « Séparation des
+  intervenants… » ; résultat — badge par segment.
+- **C3** : CPU viable — **7 ms/segment** ORT (bench F12, boulangerie),
+  pas de GPU en v1 (optionnel plus tard : provider CUDA d'ONNX
+  Runtime).
+- **Critères (arrêté au bench F12)** : étiquetage correct sur un audio
+  **2 intervenants** — boulangerie auto/N=2 → **2** (E2E), JFK 1-voix
+  auto → **1** (pas de scission — golden `diar::tests`), coût mesuré
+  (7 ms/segment), creux + effondrement arrêtés (`MIN_GAP` = 0,05,
+  `COLLAPSE_RATIO` = 0,55 — models.md §7), N forcé = **exactement N**,
+  modèle absent → dégradation gracie.
 
 ### F10 — Accélération GPU ✅
 

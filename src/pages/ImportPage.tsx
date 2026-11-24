@@ -62,6 +62,10 @@ export default function ImportPage({
   // voient que la section), pas seulement l'affichage.
   const [secStart, setSecStart] = useState<number | null>(null);
   const [secEnd, setSecEnd] = useState<number | null>(null);
+  // F9 : nombre d'intervenants demandé au moment de la transcription
+  // (0 = auto). N'a de sens que si la séparation est activée en
+  // Configuration — sinon l'option n'apparaît pas dans la forme.
+  const [diarSpeakers, setDiarSpeakers] = useState(0);
 
   async function loadContexts() {
     try {
@@ -206,6 +210,8 @@ export default function ImportPage({
         // F14 : section choisie (sliders) ; `null` = fichier complet.
         secStart,
         secEnd,
+        // F9 : nombre d'intervenants choisi dans la forme (0 = auto).
+        diarSpeakers,
       );
       // F15/F16 : le pipeline vient de consigner un nouvel enregistrement —
       // c'est le plus récent pour le fichier (historique trié, plus récents
@@ -473,6 +479,24 @@ export default function ImportPage({
       </div>
 
       <div className="row">
+        {/* F9 : option « Intervenants » (auto / N) au moment de la
+         *  transcription — affichée seulement si la séparation est
+         *  activée en Configuration. */}
+        {config?.diarize && (
+          <label className="field" style={{ margin: 0 }}>
+            Intervenants
+            <select
+              value={diarSpeakers}
+              onChange={(e) => setDiarSpeakers(Number(e.target.value))}
+            >
+              <option value={0}>auto (détecté)</option>
+              <option value={1}>1</option>
+              <option value={2}>2</option>
+              <option value={3}>3</option>
+              <option value={4}>4</option>
+            </select>
+          </label>
+        )}
         <button
           className="btn primary"
           disabled={

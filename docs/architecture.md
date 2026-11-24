@@ -84,9 +84,12 @@ WAV PCM 16 kHz mono          ← FFmpeg : section seule (-ss début -t fin-débu
    ▼
 Transcription                ← whisper.cpp (GGUF) ; langue auto/forcée
    │  F14 : segments décalés de `début` (restés alignés sur le fichier source)
+   │  F9 : diarisation (ONNX Runtime dans l'app — ADR-008) :
+   │       « Intervenante N » par segment (un embedding par segment)
    ▼
 Résumé structuré             ← tldl-llm (llama.cpp) : prompt « rencontre »
    │                            ou contexte F15 (remplace le format par défaut)
+   │                            transcription avec intervenants (F9)
    ▼
 UI : double-vue (Transcription | Résumé) + historique (SQLite)
    │  F14 : section consignée (records.section_start / section_end)
@@ -155,6 +158,48 @@ jamais concurrents (§5).
   transcription longue (≈ 3-4k tokens,
   `GGML_ASSERT(n_tokens_all <= n_batch)`). Validé dans l'app : résumé
   CPU d'un fichier de 15 min.
+### 5.3 Diarisation (F9) — ONNX Runtime dans l'app
+
+La séparation des intervenants tourne **dans l'app** (pas de binaire
+dedié) : ONNX Runtime n'a pas de collision de symboles `ggml_*` avec
+whisper.cpp (§5.2) — l'API C se lie comme les autres libraries natives.
+Le modèle d'intervenants (ONNX, F11 opt-in) produit **un embedding par
+segment** (l'intera utterance, frames fbank de `[début, fin)` — bien
+plus discriminatif que des fenêtres de 1,6 s ; segments < 1 s sans
+étiquette) ; le **clustering en Rust** (k-moyennes cosinus — testable
+`cargo test`, `diar::tests`) regroupe les embeddings en intervenants ;
+le nombre auto = **creux + effondrement** de la courbe de fusion
+(`diar::auto_k` : saut ≥ `MIN_GAP` = 0,05 **et** dernière fusion ≤
+`COLLAPSE_RATIO` = 0,55 × première — 8/8 régimes du bench F12 classés,
+cf. models.md §7) ; N forcé = **exactement N** ;
+chaque segment porte l'étiquette de son propre cluster (« Intervenante
+1 », « Intervenante 2 »…).
+
+- **Emplacement** : après la transcription (même WAV 16 kHz), avant le
+  résumé — ASR, diarisation et LLM ne sont jamais concurrents → la RAM
+  se dimensionne au maximum.
+- **Nombre** : on/off dans la config (`diarize`, comme le GPU — pas un
+  argument de commande) ; le nombre d'intervenants (auto / N) est
+  demandé **au moment de la transcription** — argument de commande
+  `diar_speakers` (0 = auto, N = **exactement N**, pas persisté).
+- **Résumé** : le LLM reçoit la transcription **avec les
+  intervenants**, segment par segment
+  (`[début–fin] Intervenante 1: texte`) — qui a dit quoi (décisions,
+  actions à venir attribuées) ; le contexte F15 n'est pas modifié.
+- **Dégradation gracie** : modèle absent (F11 opt-in) → pas
+  d'intervenant, aucun impact transcription ni résumé (bannière, même
+  pattern que le LLM).
+- **Consignation** : champ `speaker` dans le JSON des segments
+  (`transcription_json` — JSON libre, pas de migration) ; préservé au
+  re-résumé (F16) et à la section (F14).
+- **ONNX Runtime** : prébuilds par OS sous `assets/onnxruntime/<os>/`
+  (`.dll` / `.dylib` / `.so`), même pattern que FFmpeg
+  (`assets/ffmpeg/`) — pas de build par plateforme ; résolution comme
+  `media.rs` (`TLDL_ORT_DIR` → à côté de l'exécutable du bundle →
+  assets du repo).
+- **GPU** : pas de GPU en v1 (CPU viable — C3) ; optionnel plus tard
+  (provider CUDA d'ONNX Runtime).
+
 ## 6. Page « Configuration »
 
 Spécification : features.md F6. Contenu : ASR (modèle, quantification,
@@ -193,6 +238,7 @@ téléchargements opt-in, estimation RAM/VRAM, profils
 | ADR-005 | Frontend : **React + TypeScript** (Vite) | ✅ décidé |
 | ADR-006 | Historique : **SQLite** local (rusqlite `bundled`) | ✅ décidé |
 | ADR-007 | Zéro télémétrie, zéro cloud | ✅ décidé (C1) |
+| ADR-008 | Diarisation (F9) : **ONNX Runtime chargé au runtime** (`load-dynamic`, dlopen du prébuild embarqué) + clustering en Rust (alt. pyannote / 3D-Speaker — Python) | ✅ décidé |
 
 ## 9. Alternatives écartées (pour mémoire)
 
@@ -202,6 +248,7 @@ téléchargements opt-in, estimation RAM/VRAM, profils
 | faster-whisper (Python/CTranslate2) | embarque un runtime Python, packaging plus lourd que le C pur |
 | WhisperKit | macOS/iOS uniquement |
 | Ollama | un démon séparé — écarté au profit d'un processus unique (ADR-003) |
+| pyannote 3.1 / 3D-Speaker (Python/PyTorch) | diarisation (F9) : embarque un runtime Python — même raison que faster-whisper (ADR-008) |
 | LLM ≥ 13B | hors C3, sauf profil « Puissant » |
 
 ## 10. Prérequis de build (développeur)

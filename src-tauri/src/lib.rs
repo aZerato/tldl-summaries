@@ -1,6 +1,7 @@
 pub mod asr;
 mod commands;
 mod config;
+pub mod diar;
 pub mod gpu;
 pub mod llm;
 pub mod media;

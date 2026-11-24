@@ -43,9 +43,33 @@ impl Default for LlmConfig {
 ///   dirigé, jamais la transcription.
 pub fn build_prompt(transcription: &Transcription, context: &str) -> String {
     let mut s = String::new();
-    s.push_str("Voici la transcription horodatée d'une rencontre :\n\n");
-    s.push_str(&transcription.text);
-    s.push_str("\n\n");
+    // F9 : si la diarisation a tourné, la transcription passe **avec les
+    // intervenants** (segment par segment) — qui a dit quoi (décisions et
+    // actions à venir attribuées) ; sinon le texte intégral, comme avant.
+    if has_speakers(transcription) {
+        s.push_str(
+            "Voici la transcription d'une rencontre, segment par segment, \
+             avec l'intervenante qui parle :\n\n",
+        );
+        for seg in &transcription.segments {
+            let sp = seg
+                .speaker
+                .clone()
+                .unwrap_or_else(|| "Intervenant·te non identifiée".into());
+            s.push_str(&format!(
+                "[{}–{}] {}: {}\n",
+                fmt_ts(seg.start),
+                fmt_ts(seg.end),
+                sp,
+                seg.text
+            ));
+        }
+        s.push('\n');
+    } else {
+        s.push_str("Voici la transcription horodatée d'une rencontre :\n\n");
+        s.push_str(&transcription.text);
+        s.push_str("\n\n");
+    }
     let ctx = context.trim();
     if ctx.is_empty() {
         s.push_str("Tu es un assistant de synthèse de rencontre.\n");
@@ -69,6 +93,18 @@ pub fn build_prompt(transcription: &Transcription, context: &str) -> String {
           sans préambule ni reformulation des règles.",
     );
     s
+}
+
+/// F9 : la transcription porte des intervenants (diarisation) — le prompt
+/// doit alors les transmettre segment par segment.
+fn has_speakers(t: &Transcription) -> bool {
+    t.segments.iter().any(|s| s.speaker.is_some())
+}
+
+/// Horodatage compact `m:ss` (secondes tronquées) pour le prompt.
+fn fmt_ts(t: f64) -> String {
+    let t = t.max(0.0) as u64;
+    format!("{}:{:02}", t / 60, t % 60)
 }
 
 /// Dictionnaire de mots de liaison FR/EN (heuristic de détection de boucle).
@@ -395,6 +431,44 @@ mod tests {
         assert!(p.contains("## Actions à venir"));
         // Pas d'orientation (aucun contexte fourni).
         assert!(!p.contains("suivant strictement ces instructions"));
+    }
+
+    // F9 : la transcription AVEC intervenants passe dans le prompt, segment
+    // par segment — le LLM sait qui a dit quoi (attributions).
+    #[test]
+    fn speakers_reach_the_prompt() {
+        let mut t = tr();
+        t.segments = vec![
+            crate::asr::Segment {
+                start: 0.0,
+                end: 12.0,
+                text: "Bonjour, on s'arrange.".into(),
+                speaker: Some("Intervenante 1".into()),
+            },
+            crate::asr::Segment {
+                start: 12.0,
+                end: 20.5,
+                text: "Parfait.".into(),
+                speaker: Some("Intervenante 2".into()),
+            },
+        ];
+        let p = build_prompt(&t, "");
+        assert!(p.contains("Intervenante 1: Bonjour, on s'arrange."));
+        assert!(p.contains("Intervenante 2: Parfait."));
+        assert!(p.contains("[0:00–0:12]"));
+        // Le format « rencontre » reste dirigé (le contexte n'est pas modifié).
+        assert!(p.contains("## Synthèse"));
+        // Le texte intégral brut n'est pas utilisé quand les intervenants le sont.
+        assert!(!p.contains("transcription horodatée d'une rencontre"));
+    }
+
+    // F9 : sans diarisation (pas de `speaker`), le prompt reste le texte
+    // intégral — aucun « Intervenante » ne s'invente.
+    #[test]
+    fn no_speakers_keeps_plain_text() {
+        let p = build_prompt(&tr(), "");
+        assert!(!p.contains("Intervenante"));
+        assert!(p.contains("transcription horodatée d'une rencontre"));
     }
 
     // F15 : un contexte ORIENTE le résumé — il remplace le format par défaut.

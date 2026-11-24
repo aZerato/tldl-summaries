@@ -11,7 +11,7 @@ garantie.
 > fonctionnalité arrêtée, les documents sont mis à jour. Les choix majeurs
 > sont tracés en ADR avec un statut.
 
-_Dernière mise à jour : 21/11/2026_
+_Dernière mise à jour : 22/11/2026_
 
 ## Index
 
@@ -36,7 +36,9 @@ _Dernière mise à jour : 21/11/2026_
 - **Phase** : post-MVP — MVP (F1→F6 + F11) fait ; **F1/F2/F5/F6/F7/F10/
   F13/F14/F15/F16/F19 validés dans l'app**
 - **En cours (🔧)** : F3 (FR correct sur 3 profils de débit/bruit — à
-  valider, l'audio de bench est EN)
+  valider, l'audio de bench est EN) · **F9** (diarisation — code + UI
+  branchés, **à valider** au bench : étiquetage 2 intervenants + arrêt du
+  seuil de similarité, F12)
 - **Fait (✅) cette itération** : **F12** (bench CPU + GPU — matrice
   5 / 10 / 30 min, models.md §6), **F4** (< 60 s / 10 min **atteint sur
   GPU** : 12,7 s sur RTX 4070 Ti SUPER ; 246,5 s sur CPU — viable mais

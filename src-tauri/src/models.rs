@@ -14,6 +14,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 pub enum ModelKind {
     Asr,
     Llm,
+    /// F9 : modèle d'embeddings d'intervenants (ONNX, diarisation).
+    Diar,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,11 +96,13 @@ pub fn models_dir() -> PathBuf {
     app_data_dir().join("models")
 }
 
-/// Chemin attendu d'un modèle (ASR : `.bin` whisper, LLM : `.gguf`).
+/// Chemin attendu d'un modèle (ASR : `.bin` whisper, LLM : `.gguf`,
+/// F9 diarisation : `.onnx` embeddings).
 pub fn model_path(kind: ModelKind, id: &str) -> PathBuf {
     let name = match kind {
         ModelKind::Asr => format!("whisper-{id}.bin"),
         ModelKind::Llm => format!("llm-{id}.gguf"),
+        ModelKind::Diar => format!("diar-{id}.onnx"),
     };
     models_dir().join(name)
 }
@@ -264,6 +268,23 @@ pub fn catalog() -> Vec<ModelInfo> {
                     .into(),
             ),
         },
+        // F9 : embeddings d'intervenants (ONNX) — Wespeaker ECAPA-TDNN,
+        // export `voxceleb_ECAPA512.onnx` (192-d), le seul format lu par le
+        // pipeline (pas le `.pt` PyTorch du repo). docs/models.md §7.
+        ModelInfo {
+            id: "wespeaker-ecapa-tdnn512".into(),
+            kind: ModelKind::Diar,
+            name: "Wespeaker ECAPA-TDNN 512".into(),
+            size_mb: 24,
+            quant: "f32".into(),
+            ram_gb: 0.1,
+            is_default: true,
+            available: false,
+            source: Some(
+                "https://huggingface.co/Wespeaker/wespeaker-voxceleb-ecapa-tdnn512/resolve/main/voxceleb_ECAPA512.onnx"
+                    .into(),
+            ),
+        },
     ]
 }
 
@@ -297,6 +318,7 @@ pub fn download(
     let fname = match kind {
         ModelKind::Asr => format!("whisper-{id}.bin"),
         ModelKind::Llm => format!("llm-{id}.gguf"),
+        ModelKind::Diar => format!("diar-{id}.onnx"),
     };
     let dir = models_dir();
     let target = dir.join(&fname);
