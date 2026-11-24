@@ -3,6 +3,32 @@
 Synthèse locale d'audio/vidéo : import d'un fichier → **transcription**
 (whisper.cpp) + **résumé structuré** (llama.cpp), 100 % hors ligne.
 
+## Présentation
+
+![tldl](./docs/img/tldl-start.png)
+
+Résultat d'un transcription
+
+![tldl](./docs/img/tldl-transcription.png)
+
+Résultat d'un résumé pour le context attendu
+
+![tldl](./docs/img/tldl-summary.png)
+
+Historique de vos transcription
+
+![tldl](./docs/img/tldl-history.png)
+
+Création de contexts personnalisés pour vos résumés
+
+![tldl](./docs/img/tldl-context.png)
+
+Configuration
+
+![tldl](./docs/img/tldl-config-1.png)
+
+![tldl](./docs/img/tldl-config-2.png)
+
 👉 Référence du projet : [docs/](docs/) — architecture, features, modèles.
 
 ## Stack
